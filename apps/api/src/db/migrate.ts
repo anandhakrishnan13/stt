@@ -1,21 +1,28 @@
-import { Database } from "bun:sqlite";
-import { drizzle } from "drizzle-orm/bun-sqlite";
-import { migrate } from "drizzle-orm/bun-sqlite/migrator";
+import { drizzle } from "drizzle-orm/postgres-js";
+import { migrate } from "drizzle-orm/postgres-js/migrator";
+import postgres from "postgres";
 import { env } from "../env";
-import { sqlitePath } from "./index";
 
 const migrationsFolder = new URL("../../drizzle", import.meta.url).pathname;
 
-export function runMigrations(url = env.DATABASE_URL): void {
-  const client = new Database(sqlitePath(url), { create: true });
+export async function runMigrations(
+  url = env.DATABASE_URL,
+  ssl = env.DATABASE_SSL,
+): Promise<void> {
+  const client = postgres(url, {
+    max: 1,
+    prepare: false,
+    ssl: ssl ? "require" : false,
+    onnotice: () => {},
+  });
   try {
-    migrate(drizzle(client), { migrationsFolder });
+    await migrate(drizzle(client), { migrationsFolder });
   } finally {
-    client.close();
+    await client.end({ timeout: 5 });
   }
 }
 
 if (import.meta.main) {
-  runMigrations();
+  await runMigrations();
   console.log("migrations applied");
 }

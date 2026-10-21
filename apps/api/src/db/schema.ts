@@ -1,5 +1,13 @@
 import { randomUUID } from "node:crypto";
-import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
+import {
+  index,
+  integer,
+  jsonb,
+  pgTable,
+  text,
+  timestamp,
+  uniqueIndex,
+} from "drizzle-orm/pg-core";
 
 const id = () =>
   text("id")
@@ -7,11 +15,11 @@ const id = () =>
     .$defaultFn(() => randomUUID());
 
 const createdAt = () =>
-  integer("created_at", { mode: "timestamp_ms" })
+  timestamp("created_at", { withTimezone: true })
     .notNull()
     .$defaultFn(() => new Date());
 
-export const users = sqliteTable(
+export const users = pgTable(
   "users",
   {
     id: id(),
@@ -22,20 +30,20 @@ export const users = sqliteTable(
     status: text("status", { enum: ["unverified", "active", "suspended"] })
       .notNull()
       .default("unverified"),
-    emailVerifiedAt: integer("email_verified_at", { mode: "timestamp_ms" }),
+    emailVerifiedAt: timestamp("email_verified_at", { withTimezone: true }),
     tokenVersion: integer("token_version").notNull().default(0),
     failedLoginCount: integer("failed_login_count").notNull().default(0),
-    lockedUntil: integer("locked_until", { mode: "timestamp_ms" }),
+    lockedUntil: timestamp("locked_until", { withTimezone: true }),
     createdAt: createdAt(),
-    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+    updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
       .$defaultFn(() => new Date()),
-    deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (table) => [index("users_email_idx").on(table.email)],
 );
 
-export const refreshTokens = sqliteTable(
+export const refreshTokens = pgTable(
   "refresh_tokens",
   {
     id: id(),
@@ -44,8 +52,8 @@ export const refreshTokens = sqliteTable(
       .references(() => users.id, { onDelete: "cascade" }),
     tokenHash: text("token_hash").notNull().unique(),
     familyId: text("family_id").notNull(),
-    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
-    revokedAt: integer("revoked_at", { mode: "timestamp_ms" }),
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    revokedAt: timestamp("revoked_at", { withTimezone: true }),
     replacedBy: text("replaced_by"),
     userAgent: text("user_agent"),
     ip: text("ip"),
@@ -57,7 +65,7 @@ export const refreshTokens = sqliteTable(
   ],
 );
 
-export const emailOtps = sqliteTable(
+export const emailOtps = pgTable(
   "email_otps",
   {
     id: id(),
@@ -68,16 +76,16 @@ export const emailOtps = sqliteTable(
     }).notNull(),
     codeHmac: text("code_hmac").notNull(),
     attempts: integer("attempts").notNull().default(0),
-    expiresAt: integer("expires_at", { mode: "timestamp_ms" }).notNull(),
-    sentAt: integer("sent_at", { mode: "timestamp_ms" })
+    expiresAt: timestamp("expires_at", { withTimezone: true }).notNull(),
+    sentAt: timestamp("sent_at", { withTimezone: true })
       .notNull()
       .$defaultFn(() => new Date()),
-    consumedAt: integer("consumed_at", { mode: "timestamp_ms" }),
+    consumedAt: timestamp("consumed_at", { withTimezone: true }),
   },
   (table) => [index("email_otps_lookup_idx").on(table.email, table.purpose, table.sentAt)],
 );
 
-export const transcripts = sqliteTable(
+export const transcripts = pgTable(
   "transcripts",
   {
     id: id(),
@@ -89,18 +97,18 @@ export const transcripts = sqliteTable(
       .notNull()
       .default("ready"),
     language: text("language"),
-    engine: text("engine", { enum: ["gemini-live", "whisper-local"] }),
+    engine: text("engine", { enum: ["gemini-live", "whisper-local", "groq-whisper"] }),
     durationMs: integer("duration_ms").notNull().default(0),
     audioKey: text("audio_key"),
     audioMime: text("audio_mime"),
     audioBytes: integer("audio_bytes").notNull().default(0),
     chunkSeq: integer("chunk_seq").notNull().default(-1),
-    endedAt: integer("ended_at", { mode: "timestamp_ms" }),
+    endedAt: timestamp("ended_at", { withTimezone: true }),
     createdAt: createdAt(),
-    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+    updatedAt: timestamp("updated_at", { withTimezone: true })
       .notNull()
       .$defaultFn(() => new Date()),
-    deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
+    deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
   (table) => [
     index("transcripts_user_created_idx").on(table.userId, table.createdAt),
@@ -108,7 +116,7 @@ export const transcripts = sqliteTable(
   ],
 );
 
-export const segments = sqliteTable(
+export const segments = pgTable(
   "segments",
   {
     id: id(),
@@ -124,7 +132,7 @@ export const segments = sqliteTable(
   (table) => [uniqueIndex("segments_transcript_seq_idx").on(table.transcriptId, table.seq)],
 );
 
-export const auditEvents = sqliteTable(
+export const auditEvents = pgTable(
   "audit_events",
   {
     id: id(),
@@ -133,7 +141,7 @@ export const auditEvents = sqliteTable(
     target: text("target"),
     ip: text("ip"),
     userAgent: text("user_agent"),
-    metadata: text("metadata", { mode: "json" }).$type<Record<string, unknown>>(),
+    metadata: jsonb("metadata").$type<Record<string, unknown>>(),
     createdAt: createdAt(),
   },
   (table) => [index("audit_events_actor_idx").on(table.actorUserId)],

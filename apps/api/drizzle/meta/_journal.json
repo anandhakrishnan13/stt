@@ -1,33 +1,12 @@
 {
   "version": "7",
-  "dialect": "sqlite",
+  "dialect": "postgresql",
   "entries": [
     {
       "idx": 0,
-      "version": "6",
-      "when": 1792574423129,
-      "tag": "0000_green_rhodey",
-      "breakpoints": true
-    },
-    {
-      "idx": 1,
-      "version": "6",
-      "when": 1792576202742,
-      "tag": "0001_bouncy_dreaming_celestial",
-      "breakpoints": true
-    },
-    {
-      "idx": 2,
-      "version": "6",
-      "when": 1792579104054,
-      "tag": "0002_panoramic_genesis",
-      "breakpoints": true
-    },
-    {
-      "idx": 3,
-      "version": "6",
-      "when": 1792582780671,
-      "tag": "0003_oval_doctor_octopus",
+      "version": "7",
+      "when": 1792587584477,
+      "tag": "0000_outgoing_cannonball",
       "breakpoints": true
     }
   ]

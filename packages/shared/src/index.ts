@@ -207,7 +207,7 @@ export type TranscriptDTO = {
   title: string;
   status: TranscriptStatus;
   language: string | null;
-  engine: "gemini-live" | "whisper-local" | null;
+  engine: "gemini-live" | "whisper-local" | "groq-whisper" | null;
   durationMs: number;
   audioAvailable: boolean;
   createdAt: string;

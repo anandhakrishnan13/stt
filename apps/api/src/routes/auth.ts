@@ -59,7 +59,8 @@ async function startSession(
 
 function isUniqueViolation(error: unknown): boolean {
   if (typeof error !== "object" || error === null || !("code" in error)) return false;
-  return typeof error.code === "string" && error.code.startsWith("SQLITE_CONSTRAINT");
+  // PostgreSQL unique_violation. postgres.js surfaces the SQLSTATE as `code`.
+  return error.code === "23505";
 }
 
 export async function authRoutes(app: FastifyInstance): Promise<void> {

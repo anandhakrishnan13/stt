@@ -3,7 +3,19 @@ import { z } from "zod";
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().positive().default(3001),
-  DATABASE_URL: z.string().min(1).default("file:./local.db"),
+  DATABASE_URL: z
+    .string()
+    .min(1)
+    .refine(
+      (value) => value.startsWith("postgres://") || value.startsWith("postgresql://"),
+      "DATABASE_URL must be a PostgreSQL connection string",
+    )
+    .default("postgresql://stt:stt@127.0.0.1:5432/stt"),
+  DATABASE_SSL: z
+    .string()
+    .default("false")
+    .transform((value) => value === "true"),
+  DATABASE_POOL_MAX: z.coerce.number().int().positive().default(5),
   PUBLIC_APP_URL: z.string().default("http://localhost:3000"),
   CORS_ORIGINS: z.string().default("http://localhost:3000"),
 

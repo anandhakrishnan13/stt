@@ -8,3 +8,23 @@ services:
     ports:
       - "1025:1025"
       - "8025:8025"
+
+  postgres:
+    image: postgres:17-alpine
+    container_name: stt-postgres
+    environment:
+      POSTGRES_USER: stt
+      POSTGRES_PASSWORD: stt
+      POSTGRES_DB: stt
+    ports:
+      - "5432:5432"
+    volumes:
+      - stt-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U stt -d stt"]
+      interval: 2s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  stt-postgres-data:

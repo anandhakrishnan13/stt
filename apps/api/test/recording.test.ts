@@ -2,7 +2,8 @@ import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:tes
 import type { FastifyInstance } from "fastify";
 import { randomUUID } from "node:crypto";
 import { buildApp } from "../src/app";
-import { db, sqlClient } from "../src/db";
+import { db } from "../src/db";
+import { resetDb } from "./db";
 import { transcripts, users } from "../src/db/schema";
 import { ACCESS_COOKIE } from "../src/lib/cookies";
 import { signAccessToken } from "../src/lib/tokens";
@@ -73,9 +74,7 @@ afterAll(async () => {
 });
 
 beforeEach(async () => {
-  sqlClient.exec("DELETE FROM transcripts");
-  sqlClient.exec("DELETE FROM audit_events");
-  sqlClient.exec("DELETE FROM users");
+  await resetDb();
 
   ownerId = await createUser("owner@example.com");
   strangerId = await createUser("stranger@example.com");

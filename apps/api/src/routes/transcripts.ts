@@ -140,7 +140,7 @@ export async function transcriptRoutes(app: FastifyInstance): Promise<void> {
 
     const filters = [eq(transcripts.userId, userId), isNull(transcripts.deletedAt)];
     if (search) {
-      filters.push(sql`${transcripts.title} LIKE ${`%${escapeLike(search)}%`} ESCAPE '\\'`);
+      filters.push(sql`${transcripts.title} ILIKE ${`%${escapeLike(search)}%`} ESCAPE '\\'`);
     }
     if (cursor) {
       const older = or(

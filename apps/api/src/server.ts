@@ -3,7 +3,7 @@ import { closeDb } from "./db";
 import { runMigrations } from "./db/migrate";
 import { env } from "./env";
 
-runMigrations();
+await runMigrations();
 
 const app = await buildApp({ logger: true });
 
