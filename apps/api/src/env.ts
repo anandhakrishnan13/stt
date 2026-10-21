@@ -46,6 +46,18 @@ const envSchema = z.object({
   SUPABASE_BUCKET: z.string().default("transcripts"),
   MAX_AUDIO_BYTES: z.coerce.number().int().positive().default(64 * 1024 * 1024),
 
+  STT_PROVIDER: z.enum(["groq", "whisper"]).default("groq"),
+  STT_LANGUAGE: z.string().default(""),
+  STT_PROMPT: z
+    .string()
+    .default(
+      "Transcribe Hindi and English speech, including code-mixed Hinglish. Keep the spoken language and script.",
+    ),
+  GROQ_API_KEY: z.string().default(""),
+  GROQ_BASE_URL: z.string().default("https://api.groq.com/openai/v1"),
+  STT_GROQ_MODEL: z.string().default("whisper-large-v3-turbo"),
+  GROQ_TIMEOUT_MS: z.coerce.number().int().positive().default(20_000),
+
   WHISPER_URL: z.string().default("http://127.0.0.1:8081"),
   WHISPER_TIMEOUT_MS: z.coerce.number().int().positive().default(20_000),
   STT_STEP_MS: z.coerce.number().int().min(500).default(2_000),
@@ -72,6 +84,12 @@ if (parsed.data.STORAGE_DRIVER === "supabase") {
       "Invalid environment:\nSUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required when STORAGE_DRIVER=supabase",
     );
   }
+}
+
+if (parsed.data.STT_PROVIDER === "groq" && !parsed.data.GROQ_API_KEY) {
+  throw new Error(
+    "Invalid environment:\nGROQ_API_KEY is required when STT_PROVIDER=groq",
+  );
 }
 
 export const env = parsed.data;

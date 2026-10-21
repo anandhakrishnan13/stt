@@ -48,14 +48,18 @@ export function cleanTranscript(text: string): string {
     .trim();
 }
 
-type VerbosePayload = {
+export type VerbosePayload = {
   text?: unknown;
   language?: unknown;
   segments?: { words?: { word?: unknown; start?: unknown; end?: unknown }[] }[];
 };
 
 /** Word timings let the gateway trim exactly what it committed. */
-function extractWords(payload: VerbosePayload, text: string, durationMs: number): Word[] {
+export function extractWords(
+  payload: VerbosePayload,
+  text: string,
+  durationMs: number,
+): Word[] {
   const words: Word[] = [];
   for (const segment of payload.segments ?? []) {
     for (const word of segment.words ?? []) {
