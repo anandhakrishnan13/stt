@@ -4,7 +4,6 @@ dist/
 .env
 .env.local
 *.log
-bun.lock
 .DS_Store
 drizzle/meta/*.json.bak
 coverage/
