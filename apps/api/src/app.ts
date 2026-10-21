@@ -37,6 +37,7 @@ export async function buildApp(options: { logger?: boolean } = {}): Promise<Fast
     },
     credentials: true,
     methods: ["GET", "HEAD", "POST", "PATCH", "DELETE", "OPTIONS"],
+    exposedHeaders: ["Content-Range", "Accept-Ranges", "Content-Length"],
   });
   await app.register(rateLimit, {
     global: true,
@@ -50,6 +51,13 @@ export async function buildApp(options: { logger?: boolean } = {}): Promise<Fast
       },
     }),
   });
+
+  // Raw audio chunks: one request per second while recording, so buffers stay small.
+  app.addContentTypeParser(
+    "application/octet-stream",
+    { parseAs: "buffer", bodyLimit: 8 * 1024 * 1024 },
+    (_request, body, done) => done(null, body),
+  );
 
   // CSRF defence in depth: cookies are SameSite=Lax, and state-changing
   // requests that declare an Origin must come from an allowed one.

@@ -2,6 +2,9 @@ import type { TranscriptDTO } from "@stt/shared";
 
 const DAY_MS = 86_400_000;
 
+/** Fired after a recording is saved or discarded so the sidebar refetches. */
+export const TRANSCRIPTS_CHANGED = "stt:transcripts-changed";
+
 export function displayName(firstName: string, lastName: string): string {
   return `${firstName} ${lastName}`.trim();
 }
@@ -18,6 +21,14 @@ export function formatTranscriptDate(iso: string): string {
     hour: "2-digit",
     minute: "2-digit",
   });
+}
+
+/** m:ss for the live recording timer. */
+export function formatClock(durationMs: number): string {
+  const totalSeconds = Math.max(0, Math.floor(durationMs / 1000));
+  const minutes = Math.floor(totalSeconds / 60);
+  const seconds = totalSeconds % 60;
+  return `${minutes}:${String(seconds).padStart(2, "0")}`;
 }
 
 export function formatDuration(durationMs: number): string {

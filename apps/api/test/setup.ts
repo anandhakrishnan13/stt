@@ -23,7 +23,11 @@ process.env.RATE_LIMIT_LOGIN_MAX = "100000";
 process.env.RATE_LIMIT_OTP_MAX = "100000";
 process.env.RATE_LIMIT_VERIFY_MAX = "100000";
 
+process.env.STORAGE_DRIVER = "local";
+process.env.STORAGE_DIR = `/tmp/stt-test-storage-${process.pid}`;
+
 rmSync(TEST_DB_FILE, { force: true });
+rmSync(process.env.STORAGE_DIR, { recursive: true, force: true });
 
 // Static imports are hoisted above the env assignments above, so modules that
 // read process.env must be imported dynamically afterwards.

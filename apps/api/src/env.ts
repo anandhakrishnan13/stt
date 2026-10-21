@@ -27,6 +27,13 @@ const envSchema = z.object({
   LOGIN_MAX_FAILURES: z.coerce.number().int().positive().default(5),
   LOGIN_LOCK_MINUTES: z.coerce.number().int().positive().default(15),
 
+  STORAGE_DRIVER: z.enum(["local", "supabase"]).default("local"),
+  STORAGE_DIR: z.string().default("./storage"),
+  SUPABASE_URL: z.string().default(""),
+  SUPABASE_SERVICE_ROLE_KEY: z.string().default(""),
+  SUPABASE_BUCKET: z.string().default("transcripts"),
+  MAX_AUDIO_BYTES: z.coerce.number().int().positive().default(64 * 1024 * 1024),
+
   SMTP_URL: z.string().default(""),
   SMTP_FROM: z.string().default("Speech to Text <no-reply@stt.local>"),
 });
@@ -38,6 +45,14 @@ if (!parsed.success) {
     .map((issue) => `${issue.path.join(".")}: ${issue.message}`)
     .join("\n");
   throw new Error(`Invalid environment:\n${details}`);
+}
+
+if (parsed.data.STORAGE_DRIVER === "supabase") {
+  if (!parsed.data.SUPABASE_URL || !parsed.data.SUPABASE_SERVICE_ROLE_KEY) {
+    throw new Error(
+      "Invalid environment:\nSUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required when STORAGE_DRIVER=supabase",
+    );
+  }
 }
 
 export const env = parsed.data;

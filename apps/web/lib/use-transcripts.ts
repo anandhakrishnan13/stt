@@ -3,8 +3,10 @@
 import type { TranscriptDTO } from "@stt/shared";
 import { useCallback, useEffect, useState } from "react";
 import { api } from "@/lib/api";
+import { TRANSCRIPTS_CHANGED } from "@/lib/transcripts";
 
 const PAGE_SIZE = 50;
+
 
 export type TranscriptsState = {
   items: TranscriptDTO[];
@@ -53,6 +55,12 @@ export function useTranscripts(query: string): TranscriptsState {
   }, [query, version]);
 
   const refresh = useCallback(() => setVersion((value) => value + 1), []);
+
+  useEffect(() => {
+    const onChange = () => setVersion((value) => value + 1);
+    window.addEventListener(TRANSCRIPTS_CHANGED, onChange);
+    return () => window.removeEventListener(TRANSCRIPTS_CHANGED, onChange);
+  }, []);
 
   const rename = useCallback((transcript: TranscriptDTO) => {
     setItems((current) =>

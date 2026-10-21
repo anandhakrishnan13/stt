@@ -5,7 +5,7 @@ import { ArrowLeft, AudioLines } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
-import { ApiError, api } from "@/lib/api";
+import { ApiError, api, audioUrl } from "@/lib/api";
 import { ENGINE_LABEL, formatDuration, formatTranscriptDate } from "@/lib/transcripts";
 
 type State =
@@ -89,12 +89,31 @@ export default function TranscriptPage() {
       </header>
 
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6 md:px-8">
-        <div className="mx-auto max-w-3xl rounded-2xl border border-dashed border-slate-300 p-8 text-center dark:border-slate-700">
-          <AudioLines className="mx-auto size-6 text-slate-400" aria-hidden />
-          <p className="mt-3 text-sm font-medium">No speech captured yet</p>
-          <p className="mx-auto mt-1 max-w-sm text-xs text-slate-500 dark:text-slate-400">
-            Segments appear here once capture starts.
-          </p>
+        <div className="mx-auto max-w-3xl space-y-4">
+          {transcript.audioAvailable ? (
+            <section
+              aria-label="Recording playback"
+              className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900"
+            >
+              <audio
+                controls
+                preload="metadata"
+                crossOrigin="use-credentials"
+                src={audioUrl(transcript.id)}
+                className="w-full"
+              />
+            </section>
+          ) : null}
+
+          <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center dark:border-slate-700">
+            <AudioLines className="mx-auto size-6 text-slate-400" aria-hidden />
+            <p className="mt-3 text-sm font-medium">No speech captured yet</p>
+            <p className="mx-auto mt-1 max-w-sm text-xs text-slate-500 dark:text-slate-400">
+              {transcript.status === "failed"
+                ? "This recording ended before any audio arrived."
+                : "Segments appear here once transcription is connected."}
+            </p>
+          </div>
         </div>
       </div>
     </main>

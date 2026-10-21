@@ -12,3 +12,6 @@ coverage/
 *.db-shm
 apps/api/local.db*
 *.tsbuildinfo
+
+# runtime audio objects
+apps/api/storage/

@@ -11,9 +11,14 @@ transcripts, search, an account-settings modal, and a transcript view. Rename an
 sidebar (hover a row); the chat pane is read-only. `transcripts` is a real table with ownership-
 scoped CRUD and keyset pagination.
 
-**Slice 3 — live capture (next):** mic → AudioWorklet → 16 kHz PCM over WebSocket → Fastify gateway
-→ Gemini Live (`gemini-3.5-transcribe-live`) → interim text in the composer, finalized segments
-written to the transcript.
+**Slice 3 — recording capture + playback (this repo today):** mic → `MediaRecorder` (Opus, or AAC on
+Safari) → 1-second chunks uploaded to the API → assembled and stored per transcript → playable with
+HTTP Range requests in the detail view. Storage is pluggable: local filesystem by default, Supabase
+Storage when credentials are configured.
+
+**Slice 4 — live transcription (next):** stream 16 kHz PCM over WebSocket → Fastify gateway → Gemini
+Live (or a local Whisper fallback) → interim text in the composer, final segments persisted alongside
+the audio.
 
 ## Stack
 
@@ -58,6 +63,9 @@ Config lives per app: `apps/api/.env` (from `apps/api/.env.example`) and `apps/w
 | `OTP_*` | TTL, attempts, resend cooldown, hourly cap |
 | `LOGIN_*` | failure threshold and lock duration |
 | `RATE_LIMIT_*` | per-route limits |
+| `STORAGE_DRIVER` | `local` (files in `STORAGE_DIR`) or `supabase` |
+| `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_BUCKET` | only for `STORAGE_DRIVER=supabase`; private bucket, server-side key |
+| `MAX_AUDIO_BYTES` | upload cap per recording (64 MiB default) |
 
 ## API
 
@@ -77,11 +85,29 @@ All responses are JSON; errors are `{ "error": { "code", "message", "details?" }
 | POST | `/auth/password/change` | access cookie | `currentPassword, code, newPassword` → 204, revokes all sessions |
 | POST | `/auth/password/reset/request` | — | `email` → 202 (always) |
 | POST | `/auth/password/reset/confirm` | — | `email, code, newPassword` → 204 |
+| POST | `/transcripts` | access cookie | `mime` → 201 recording row (status `recording`) |
+| POST | `/transcripts/:id/chunks?seq=N` | access cookie | raw `application/octet-stream`, strict sequence, retry-safe |
+| POST | `/transcripts/:id/finish` | access cookie | `durationMs` → `ready` + stored audio (or `failed` when empty) |
+| POST | `/transcripts/:id/abort` | access cookie | 204, discards staged chunks, marks `failed` |
+| GET | `/transcripts/:id/audio` | access cookie | audio bytes, `Range`/`206` support, ownership enforced |
 | GET | `/transcripts?q=&cursor=&limit=` | access cookie | keyset-paginated, newest first, title search |
 | GET | `/transcripts/:id` | access cookie | 404 for another user's row |
 | PATCH | `/transcripts/:id` | access cookie | `title` → renamed transcript, audited |
 | DELETE | `/transcripts/:id` | access cookie | 204, soft delete, audited |
 | GET | `/health` | — | liveness |
+
+## Audio pipeline
+
+The browser is the only encoder: `MediaRecorder` produces compressed chunks (Opus/WebM, or
+AAC/MP4 on Safari) at 24 kbps. Chunks go to `POST /transcripts/:id/chunks?seq=N` in order; the API
+appends them to a staging file, rejecting gaps and treating a replayed `seq` as a no-op. On
+`finish`, the assembled file is written to the storage driver and the row flips to `ready` with its
+mime type, byte count, and duration. Serving goes through the API so cookies and ownership checks
+apply; `Range` requests are proxied to the driver, which is what makes `<audio>` seeking work.
+
+Audio is compressed once (no server-side ffmpeg), stored privately, and removed when the transcript
+is deleted. Supabase Storage is used as an object path in the database — never a public URL — and
+the browser only ever talks to this API, so the service-role key stays server-side.
 
 ## Security decisions
 
@@ -106,17 +132,21 @@ All responses are JSON; errors are `{ "error": { "code", "message", "details?" }
 ## Testing
 
 ```bash
-bun test        # 20 integration tests, disposable SQLite file, no mocks of the product code
+bun test        # 31 integration tests, disposable SQLite file + temp storage dir
 ```
 
 Covered: signup → verify → session, OTP attempt cap, duplicate-signup non-enumeration, unverified
 login block, lockout, refresh rotation + replay detection, soft-deleted user token rejection,
 logout-all, password change killing old sessions, reset flow, transcript listing/search/pagination,
-cross-user 404s, rename validation + audit, soft delete, CORS preflight for PATCH/DELETE.
+cross-user 404s, rename validation + audit, soft delete, CORS preflight for PATCH/DELETE,
+recording chunk ordering/retry/limits, finish idempotency and mime negotiation, stored audio bytes,
+`Range`/`206`/`416` playback, staged-chunk cleanup on abort/delete, and the Supabase Storage driver
+against a local stub of its REST API.
 
 Manual verification (performed): browser passes for signup → Mailpit code → workspace, OTP-gated
 password change and reset, sidebar search/rename/delete, account modal, transcript view, mobile
-drawer open/close.
+drawer open/close, and a synthetic-mic recording (7 chunks) that lands in the detail page and plays
+through the Range-served audio endpoint.
 
 ## Going to Postgres
 

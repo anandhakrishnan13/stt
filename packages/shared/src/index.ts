@@ -17,6 +17,7 @@ export const ErrorCode = {
   UNAUTHENTICATED: "UNAUTHENTICATED",
   CSRF_ORIGIN: "CSRF_ORIGIN",
   NOT_FOUND: "NOT_FOUND",
+  STATE_CONFLICT: "STATE_CONFLICT",
   RATE_LIMITED: "RATE_LIMITED",
   INTERNAL: "INTERNAL",
 } as const;
@@ -160,12 +161,36 @@ export const renameTranscriptSchema = z.object({ title: transcriptTitleSchema })
 
 export type RenameTranscriptInput = z.infer<typeof renameTranscriptSchema>;
 
+const AUDIO_MIME_RE = /^audio\/(webm|mp4|ogg)(;[a-z0-9=._-]+)*$/i;
+
+export const startRecordingSchema = z.object({
+  mime: z
+    .string({ error: "A recorder mime type is required" })
+    .trim()
+    .max(80, "Mime type is too long")
+    .regex(AUDIO_MIME_RE, "Unsupported audio container"),
+});
+
+export const finishRecordingSchema = z.object({
+  durationMs: z.coerce
+    .number({ error: "Duration is required" })
+    .int("Duration must be whole milliseconds")
+    .min(0, "Duration cannot be negative")
+    .max(3_600_000, "Recordings are capped at one hour"),
+});
+
+export type StartRecordingInput = z.infer<typeof startRecordingSchema>;
+export type FinishRecordingInput = z.infer<typeof finishRecordingSchema>;
+export type TranscriptStatus = "recording" | "ready" | "failed";
+
 export type TranscriptDTO = {
   id: string;
   title: string;
+  status: TranscriptStatus;
   language: string | null;
   engine: "gemini-live" | "whisper-local" | null;
   durationMs: number;
+  audioAvailable: boolean;
   createdAt: string;
   updatedAt: string;
 };

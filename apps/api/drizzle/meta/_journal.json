@@ -15,6 +15,13 @@
       "when": 1792576202742,
       "tag": "0001_bouncy_dreaming_celestial",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1792579104054,
+      "tag": "0002_panoramic_genesis",
+      "breakpoints": true
     }
   ]
 }

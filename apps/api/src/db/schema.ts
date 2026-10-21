@@ -85,9 +85,17 @@ export const transcripts = sqliteTable(
       .notNull()
       .references(() => users.id, { onDelete: "cascade" }),
     title: text("title").notNull(),
+    status: text("status", { enum: ["recording", "ready", "failed"] })
+      .notNull()
+      .default("ready"),
     language: text("language"),
     engine: text("engine", { enum: ["gemini-live", "whisper-local"] }),
     durationMs: integer("duration_ms").notNull().default(0),
+    audioKey: text("audio_key"),
+    audioMime: text("audio_mime"),
+    audioBytes: integer("audio_bytes").notNull().default(0),
+    chunkSeq: integer("chunk_seq").notNull().default(-1),
+    endedAt: integer("ended_at", { mode: "timestamp_ms" }),
     createdAt: createdAt(),
     updatedAt: integer("updated_at", { mode: "timestamp_ms" })
       .notNull()

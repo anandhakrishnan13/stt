@@ -112,6 +112,22 @@ export const api = {
     }),
   deleteTranscript: (id: string) =>
     apiRequest<void>(`/transcripts/${id}`, { method: "DELETE" }),
+
+  startRecording: (mime: string) => post<TranscriptResponse>("/transcripts", { mime }),
+  uploadChunk: (id: string, seq: number, chunk: Blob) =>
+    apiRequest<{ chunkSeq: number; bytes: number }>(`/transcripts/${id}/chunks?seq=${seq}`, {
+      method: "POST",
+      body: chunk,
+      headers: { "content-type": "application/octet-stream" },
+    }),
+  finishRecording: (id: string, durationMs: number) =>
+    post<TranscriptResponse>(`/transcripts/${id}/finish`, { durationMs }),
+  abortRecording: (id: string) => post<void>(`/transcripts/${id}/abort`),
 };
+
+/** Same-origin cookie auth covers the media element too. */
+export function audioUrl(id: string): string {
+  return `${API_URL}/transcripts/${id}/audio`;
+}
 
 export type { UserDTO };

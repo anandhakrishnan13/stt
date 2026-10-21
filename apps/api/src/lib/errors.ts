@@ -46,5 +46,8 @@ export const errors = {
     }),
   csrf: () => new AppError(ErrorCode.CSRF_ORIGIN, 403, "Request origin is not allowed"),
   notFound: (message = "Not found") => new AppError(ErrorCode.NOT_FOUND, 404, message),
+  stateConflict: (message: string) => new AppError(ErrorCode.STATE_CONFLICT, 409, message),
+  payloadTooLarge: (message = "Upload is too large") =>
+    new AppError(ErrorCode.VALIDATION_ERROR, 413, message),
   internal: () => new AppError(ErrorCode.INTERNAL, 500, "Something went wrong"),
 };
