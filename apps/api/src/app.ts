@@ -9,6 +9,7 @@ import { limits } from "./lib/limits";
 import { AppError, errors } from "./lib/errors";
 import { authRoutes } from "./routes/auth";
 import { passwordRoutes } from "./routes/password";
+import { transcriptRoutes } from "./routes/transcripts";
 
 function httpStatus(error: unknown): number {
   if (typeof error === "object" && error !== null && "statusCode" in error) {
@@ -35,6 +36,7 @@ export async function buildApp(options: { logger?: boolean } = {}): Promise<Fast
       callback(new Error("Origin not allowed"), false);
     },
     credentials: true,
+    methods: ["GET", "HEAD", "POST", "PATCH", "DELETE", "OPTIONS"],
   });
   await app.register(rateLimit, {
     global: true,
@@ -99,6 +101,7 @@ export async function buildApp(options: { logger?: boolean } = {}): Promise<Fast
 
   await app.register(authRoutes, { prefix: "/auth" });
   await app.register(passwordRoutes, { prefix: "/auth" });
+  await app.register(transcriptRoutes, { prefix: "/transcripts" });
 
   return app;
 }

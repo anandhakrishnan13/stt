@@ -1,7 +1,7 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
 import type { FastifyInstance, LightMyRequestResponse } from "fastify";
 import { buildApp } from "../src/app";
-import { closeDb, sqlClient } from "../src/db";
+import { sqlClient } from "../src/db";
 import { users } from "../src/db/schema";
 import { clearOutbox, getOutbox } from "../src/lib/mailer";
 import { eq } from "drizzle-orm";
@@ -19,13 +19,14 @@ beforeAll(async () => {
 
 afterAll(async () => {
   await app.close();
-  await closeDb();
+  // The shared SQLite handle stays open for other test files in this process.
 });
 
 beforeEach(async () => {
   sqlClient.exec("DELETE FROM audit_events");
   sqlClient.exec("DELETE FROM email_otps");
   sqlClient.exec("DELETE FROM refresh_tokens");
+  sqlClient.exec("DELETE FROM transcripts");
   sqlClient.exec("DELETE FROM users");
   clearOutbox();
 });

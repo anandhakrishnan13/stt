@@ -17,7 +17,7 @@ import { applyApiError } from "@/lib/form";
 function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const nextPath = params.get("next") ?? "/dashboard";
+  const nextPath = params.get("next") ?? "/";
   const [formError, setFormError] = useState<string | null>(null);
   const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null);
   const resetDone = params.get("reset") === "1";

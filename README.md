@@ -2,13 +2,18 @@
 
 Multilingual (Hindi/English code-mixed) real-time transcription service — built slice by slice.
 
-**Slice 1 — accounts (this repo today):** signup with email OTP verification, login, rotating
-refresh sessions, OTP-gated password change, and password reset. No roles; every authenticated user
-acts only on their own data.
+**Slice 1 — accounts:** signup with email OTP verification, login, rotating refresh sessions,
+OTP-gated password change, password reset. No roles; every authenticated user acts only on their own
+data.
 
-**Slice 2 — live transcription (next):** mic → AudioWorklet → 16 kHz PCM over WebSocket → Fastify
-gateway → Gemini Live (`gemini-3.5-transcribe-live`) → interim text in the UI, finalized segments in
-the database, dashboard CRUD over transcript history.
+**Slice 2 — workspace shell + history (this repo today):** ChatGPT-style sidebar with recent
+transcripts, search, an account-settings modal, and a transcript view. Rename and delete live in the
+sidebar (hover a row); the chat pane is read-only. `transcripts` is a real table with ownership-
+scoped CRUD and keyset pagination.
+
+**Slice 3 — live capture (next):** mic → AudioWorklet → 16 kHz PCM over WebSocket → Fastify gateway
+→ Gemini Live (`gemini-3.5-transcribe-live`) → interim text in the composer, finalized segments
+written to the transcript.
 
 ## Stack
 
@@ -72,6 +77,10 @@ All responses are JSON; errors are `{ "error": { "code", "message", "details?" }
 | POST | `/auth/password/change` | access cookie | `currentPassword, code, newPassword` → 204, revokes all sessions |
 | POST | `/auth/password/reset/request` | — | `email` → 202 (always) |
 | POST | `/auth/password/reset/confirm` | — | `email, code, newPassword` → 204 |
+| GET | `/transcripts?q=&cursor=&limit=` | access cookie | keyset-paginated, newest first, title search |
+| GET | `/transcripts/:id` | access cookie | 404 for another user's row |
+| PATCH | `/transcripts/:id` | access cookie | `title` → renamed transcript, audited |
+| DELETE | `/transcripts/:id` | access cookie | 204, soft delete, audited |
 | GET | `/health` | — | liveness |
 
 ## Security decisions
@@ -89,20 +98,25 @@ All responses are JSON; errors are `{ "error": { "code", "message", "details?" }
   unverified/locked state after a correct password; unknown accounts burn a dummy argon2 verification.
 - **Abuse limits**: per-IP rate limits (global + per route), 5 failed logins lock the account for 15
   minutes, `Origin` whitelist enforced on state-changing requests, helmet security headers.
-- **Soft delete**: `users.deleted_at` keeps audit trails intact and doubles as the stale-token check.
+- **Soft delete**: `users.deleted_at` (stale-token check) and `transcripts.deleted_at` (history)
+  keep audit trails intact; deleted transcripts vanish from every read and 404 on direct access.
+- **Ownership in the query**: transcript reads filter on `user_id`, so another account's id is
+  indistinguishable from a missing one.
 
 ## Testing
 
 ```bash
-bun test        # 12 integration tests, disposable SQLite file, no mocks of the product code
+bun test        # 20 integration tests, disposable SQLite file, no mocks of the product code
 ```
 
 Covered: signup → verify → session, OTP attempt cap, duplicate-signup non-enumeration, unverified
 login block, lockout, refresh rotation + replay detection, soft-deleted user token rejection,
-logout-all, password change killing old sessions, reset flow.
+logout-all, password change killing old sessions, reset flow, transcript listing/search/pagination,
+cross-user 404s, rename validation + audit, soft delete, CORS preflight for PATCH/DELETE.
 
-Manual verification (performed): full browser pass against Mailpit — signup, code from inbox,
-dashboard, OTP-gated password change with redirect and old-password rejection, reset flow, re-login.
+Manual verification (performed): browser passes for signup → Mailpit code → workspace, OTP-gated
+password change and reset, sidebar search/rename/delete, account modal, transcript view, mobile
+drawer open/close.
 
 ## Going to Postgres
 
@@ -118,5 +132,5 @@ Nothing in the routes or services depends on SQLite beyond `db`'s import.
 
 - Fastify WebSocket gateway (`@fastify/websocket`) + Gemini Live adapter with interim/final events.
 - AudioWorklet capture, 100 ms PCM chunks, reconnect/backoff, 10-minute session cap handling.
-- `transcripts` and `transcript_segments` tables, dashboard list/detail, rename/edit/delete.
+- Create a transcript when capture starts; store finalized segments and render them in the chat pane.
 - Self-hosted TTS for playback (Kokoro-82M, Apache-2.0) or Gemini TTS, cached per transcript.

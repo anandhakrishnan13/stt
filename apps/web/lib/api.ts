@@ -2,8 +2,11 @@ import type {
   ChangePasswordInput,
   LoginInput,
   MeResponse,
+  RenameTranscriptInput,
   ResetConfirmInput,
   SignupInput,
+  TranscriptListResponse,
+  TranscriptResponse,
   UserDTO,
   VerifyEmailInput,
 } from "@stt/shared";
@@ -92,6 +95,23 @@ export const api = {
     post<{ status: string }>("/auth/password/reset/request", { email }),
   confirmPasswordReset: (input: ResetConfirmInput) =>
     post<void>("/auth/password/reset/confirm", input),
+
+  listTranscripts: (params: { q?: string; cursor?: string; limit?: number } = {}) => {
+    const search = new URLSearchParams();
+    if (params.q) search.set("q", params.q);
+    if (params.cursor) search.set("cursor", params.cursor);
+    if (params.limit) search.set("limit", String(params.limit));
+    const suffix = search.toString();
+    return apiRequest<TranscriptListResponse>(`/transcripts${suffix ? `?${suffix}` : ""}`);
+  },
+  getTranscript: (id: string) => apiRequest<TranscriptResponse>(`/transcripts/${id}`),
+  renameTranscript: (id: string, input: RenameTranscriptInput) =>
+    apiRequest<TranscriptResponse>(`/transcripts/${id}`, {
+      method: "PATCH",
+      body: JSON.stringify(input),
+    }),
+  deleteTranscript: (id: string) =>
+    apiRequest<void>(`/transcripts/${id}`, { method: "DELETE" }),
 };
 
 export type { UserDTO };

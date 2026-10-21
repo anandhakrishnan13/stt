@@ -77,6 +77,29 @@ export const emailOtps = sqliteTable(
   (table) => [index("email_otps_lookup_idx").on(table.email, table.purpose, table.sentAt)],
 );
 
+export const transcripts = sqliteTable(
+  "transcripts",
+  {
+    id: id(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => users.id, { onDelete: "cascade" }),
+    title: text("title").notNull(),
+    language: text("language"),
+    engine: text("engine", { enum: ["gemini-live", "whisper-local"] }),
+    durationMs: integer("duration_ms").notNull().default(0),
+    createdAt: createdAt(),
+    updatedAt: integer("updated_at", { mode: "timestamp_ms" })
+      .notNull()
+      .$defaultFn(() => new Date()),
+    deletedAt: integer("deleted_at", { mode: "timestamp_ms" }),
+  },
+  (table) => [
+    index("transcripts_user_created_idx").on(table.userId, table.createdAt),
+    index("transcripts_user_deleted_idx").on(table.userId, table.deletedAt),
+  ],
+);
+
 export const auditEvents = sqliteTable(
   "audit_events",
   {
@@ -94,3 +117,5 @@ export const auditEvents = sqliteTable(
 
 export type UserRow = typeof users.$inferSelect;
 export type RefreshTokenRow = typeof refreshTokens.$inferSelect;
+
+export type TranscriptRow = typeof transcripts.$inferSelect;

@@ -8,6 +8,32 @@ body {
   @apply bg-slate-50 text-slate-900 antialiased dark:bg-slate-950 dark:text-slate-100;
 }
 
+@keyframes sheet-in {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: none;
+  }
+}
+
+@keyframes overlay-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+.sheet-content[data-state="open"] {
+  animation: sheet-in 180ms ease-out;
+}
+
+.sheet-overlay[data-state="open"] {
+  animation: overlay-in 150ms ease-out;
+}
+
 ::selection {
   @apply bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900;
 }

@@ -11,3 +11,4 @@ coverage/
 *.db-wal
 *.db-shm
 apps/api/local.db*
+*.tsbuildinfo

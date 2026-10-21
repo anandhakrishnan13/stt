@@ -45,5 +45,6 @@ export const errors = {
       retryAfterSeconds,
     }),
   csrf: () => new AppError(ErrorCode.CSRF_ORIGIN, 403, "Request origin is not allowed"),
+  notFound: (message = "Not found") => new AppError(ErrorCode.NOT_FOUND, 404, message),
   internal: () => new AppError(ErrorCode.INTERNAL, 500, "Something went wrong"),
 };

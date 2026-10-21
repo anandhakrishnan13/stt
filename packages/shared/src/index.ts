@@ -16,6 +16,7 @@ export const ErrorCode = {
   OTP_COOLDOWN: "OTP_COOLDOWN",
   UNAUTHENTICATED: "UNAUTHENTICATED",
   CSRF_ORIGIN: "CSRF_ORIGIN",
+  NOT_FOUND: "NOT_FOUND",
   RATE_LIMITED: "RATE_LIMITED",
   INTERNAL: "INTERNAL",
 } as const;
@@ -144,6 +145,37 @@ export type ResendOtpInput = z.infer<typeof resendOtpSchema>;
 export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
 export type ResetRequestInput = z.infer<typeof resetRequestSchema>;
 export type ResetConfirmInput = z.infer<typeof resetConfirmSchema>;
+
+/* ------------------------------------------------------------------ */
+/* Transcripts                                                         */
+/* ------------------------------------------------------------------ */
+
+export const transcriptTitleSchema = z
+  .string({ error: "Title is required" })
+  .trim()
+  .min(1, "Title is required")
+  .max(120, "Use at most 120 characters");
+
+export const renameTranscriptSchema = z.object({ title: transcriptTitleSchema });
+
+export type RenameTranscriptInput = z.infer<typeof renameTranscriptSchema>;
+
+export type TranscriptDTO = {
+  id: string;
+  title: string;
+  language: string | null;
+  engine: "gemini-live" | "whisper-local" | null;
+  durationMs: number;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type TranscriptListResponse = {
+  items: TranscriptDTO[];
+  nextCursor: string | null;
+};
+
+export type TranscriptResponse = { transcript: TranscriptDTO };
 
 export type UserDTO = {
   id: string;

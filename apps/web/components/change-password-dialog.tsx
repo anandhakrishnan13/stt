@@ -14,7 +14,6 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
@@ -23,9 +22,14 @@ import { applyApiError } from "@/lib/form";
 
 const RESEND_SECONDS = 60;
 
-export function ChangePasswordDialog({ children }: { children: React.ReactNode }) {
+export function ChangePasswordDialog({
+  open,
+  onOpenChange,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+}) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
   const [codeSent, setCodeSent] = useState(false);
   const [sendingCode, setSendingCode] = useState(false);
   const [cooldown, setCooldown] = useState(0);
@@ -41,6 +45,12 @@ export function ChangePasswordDialog({ children }: { children: React.ReactNode }
     resolver: zodResolver(changePasswordSchema),
     defaultValues: { currentPassword: "", code: "", newPassword: "" },
   });
+
+  useEffect(() => {
+    if (open) return;
+    setFormError(null);
+    setNotice(null);
+  }, [open]);
 
   useEffect(() => {
     if (cooldown <= 0) return;
@@ -75,8 +85,7 @@ export function ChangePasswordDialog({ children }: { children: React.ReactNode }
   }
 
   return (
-    <Dialog open={open} onOpenChange={setOpen}>
-      <DialogTrigger asChild>{children}</DialogTrigger>
+    <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
           <DialogTitle>Change password</DialogTitle>
@@ -144,7 +153,7 @@ export function ChangePasswordDialog({ children }: { children: React.ReactNode }
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={() => setOpen(false)} type="button">
+          <Button variant="outline" onClick={() => onOpenChange(false)} type="button">
             Cancel
           </Button>
           <Button type="submit" form="change-password-form" loading={isSubmitting}>

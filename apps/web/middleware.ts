@@ -1,20 +1,21 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-const PROTECTED = ["/dashboard", "/account"];
+const PROTECTED = ["/", "/t/"];
 const AUTH_PAGES = ["/login", "/signup", "/forgot-password", "/reset-password"];
 
 export function middleware(request: NextRequest) {
   const { pathname } = request.nextUrl;
   const hasSession = request.cookies.has("st_session");
 
-  if (!hasSession && PROTECTED.some((path) => pathname.startsWith(path))) {
+  const isProtected = PROTECTED.some((path) => (path === "/" ? pathname === "/" : pathname.startsWith(path)));
+  if (!hasSession && isProtected) {
     const url = new URL("/login", request.url);
     url.searchParams.set("next", pathname);
     return NextResponse.redirect(url);
   }
 
   if (hasSession && AUTH_PAGES.some((path) => pathname.startsWith(path))) {
-    return NextResponse.redirect(new URL("/dashboard", request.url));
+    return NextResponse.redirect(new URL("/", request.url));
   }
 
   return NextResponse.next();
@@ -22,8 +23,8 @@ export function middleware(request: NextRequest) {
 
 export const config = {
   matcher: [
-    "/dashboard/:path*",
-    "/account/:path*",
+    "/",
+    "/t/:path*",
     "/login",
     "/signup",
     "/forgot-password",

@@ -46,7 +46,7 @@ function VerifyEmailForm() {
     setNotice(null);
     try {
       await api.verifyEmail(values);
-      router.push("/dashboard");
+      router.push("/");
     } catch (error) {
       setFormError(applyApiError(error, setError));
     }
