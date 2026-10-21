@@ -101,16 +101,11 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col border-r border-slate-200 bg-slate-100/80 dark:border-slate-800 dark:bg-slate-900/70">
-      <div className="flex items-center gap-2 px-3 pb-3 pt-3">
+      <div className="flex items-center gap-2 px-3 py-3">
         <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900">
           <AudioLines className="size-4" aria-hidden />
         </span>
-        <div className="min-w-0">
-          <p className="truncate text-sm font-semibold tracking-tight">Speech to Text</p>
-          <p className="truncate text-[11px] text-slate-500 dark:text-slate-400">
-            Hindi · English · mixed
-          </p>
-        </div>
+        <span className="truncate text-sm font-semibold tracking-tight">Speech to Text</span>
       </div>
 
       <div className="px-2">
@@ -162,7 +157,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 
         {!loading && !error && items.length === 0 ? (
           <p className="px-2 py-3 text-xs text-slate-500 dark:text-slate-400">
-            {search ? `No transcripts match “${search}”.` : "No transcripts yet. Your recordings land here."}
+            {search ? `No matches for “${search}”.` : "No transcripts yet."}
           </p>
         ) : null}
 

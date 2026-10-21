@@ -40,7 +40,7 @@ export function SettingsDialog({
       <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Account settings</DialogTitle>
-          <DialogDescription>Profile, sessions and access for this workspace.</DialogDescription>
+          <DialogDescription>Profile and sessions.</DialogDescription>
         </DialogHeader>
 
         <div className="flex items-center gap-3 rounded-lg border border-slate-200 p-3 dark:border-slate-800">
@@ -67,7 +67,6 @@ export function SettingsDialog({
           <Row label="Email verified">
             {user.emailVerifiedAt ? formatTranscriptDate(user.emailVerifiedAt) : "Not yet"}
           </Row>
-          <Row label="Sessions">15-minute access · rotating refresh</Row>
         </dl>
 
         <DialogFooter className="flex-wrap justify-between gap-2 sm:justify-between">

@@ -8,9 +8,6 @@ export default function AuthLayout({ children }: { children: ReactNode }) {
         Speech<span className="text-slate-400">to</span>Text
       </Link>
       <div className="w-full max-w-md">{children}</div>
-      <p className="mt-8 text-xs text-slate-500">
-        Real-time multilingual transcription · accounts secured with argon2id and email OTP
-      </p>
     </div>
   );
 }

@@ -30,10 +30,9 @@ export function Composer() {
         </div>
         <p
           id="composer-note"
-          className="flex items-center justify-between gap-3 px-3 pb-1 text-[11px] text-slate-500 dark:text-slate-400"
+          className="px-3 pb-1 text-center text-[11px] text-slate-500 dark:text-slate-400"
         >
-          <span>16 kHz PCM · Gemini Live</span>
-          <span>Audio capture is not wired yet</span>
+          Audio capture isn’t connected yet
         </p>
       </div>
     </div>

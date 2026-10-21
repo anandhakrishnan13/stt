@@ -93,8 +93,7 @@ export default function TranscriptPage() {
           <AudioLines className="mx-auto size-6 text-slate-400" aria-hidden />
           <p className="mt-3 text-sm font-medium">No speech captured yet</p>
           <p className="mx-auto mt-1 max-w-sm text-xs text-slate-500 dark:text-slate-400">
-            Sentences appear here as soon as live capture starts writing segments to this
-            transcript. Rename or delete it from the sidebar.
+            Segments appear here once capture starts.
           </p>
         </div>
       </div>

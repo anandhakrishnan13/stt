@@ -60,10 +60,9 @@ export function RenameTranscriptDialog({
 
   return (
     <Dialog open={transcript !== null} onOpenChange={(open) => (open ? undefined : onClose())}>
-      <DialogContent>
+      <DialogContent aria-describedby={undefined}>
         <DialogHeader>
           <DialogTitle>Rename transcript</DialogTitle>
-          <DialogDescription>Only the title changes; the audio and text stay as they are.</DialogDescription>
         </DialogHeader>
         <form id="rename-transcript-form" method="post" onSubmit={onSubmit} className="space-y-3">
           {error ? <Alert variant="error">{error}</Alert> : null}
@@ -129,7 +128,7 @@ export function DeleteTranscriptDialog({
         <DialogHeader>
           <DialogTitle>Delete transcript</DialogTitle>
           <DialogDescription>
-            “{transcript?.title}” moves to the deleted state and disappears from your history.
+            “{transcript?.title}” will disappear from your history.
           </DialogDescription>
         </DialogHeader>
         {error ? <Alert variant="error">{error}</Alert> : null}

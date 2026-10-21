@@ -53,7 +53,7 @@ function LoginForm() {
     <Card>
       <CardHeader>
         <CardTitle>Sign in</CardTitle>
-        <CardDescription>Use the email and password you registered with.</CardDescription>
+        <CardDescription>Sign in to continue.</CardDescription>
       </CardHeader>
       <form method="post" onSubmit={handleSubmit(onSubmit)} noValidate>
         <CardContent className="space-y-4">

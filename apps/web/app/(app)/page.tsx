@@ -26,10 +26,7 @@ export default function WorkspacePage() {
             {user ? `, ${user.firstName}` : ""}
           </h1>
           <p className="mt-2 text-sm text-slate-600 dark:text-slate-400">
-            Speak a sentence in Hindi, English, or a mix of both.
-          </p>
-          <p className="mt-1 text-sm text-slate-500 dark:text-slate-500">
-            Finished sentences will land in your history, ready to rename or delete.
+            Hindi, English, or a mix of both.
           </p>
         </div>
       </div>
