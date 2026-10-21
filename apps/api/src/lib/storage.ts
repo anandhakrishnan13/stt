@@ -26,6 +26,16 @@ export interface StorageDriver {
 
 const KEY_RE = /^audio\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.(webm|m4a|ogg)$/;
 
+/**
+ * Supabase's new `sb_secret_...` keys are opaque strings, not JWTs; the gateway
+ * rejects them as Bearer tokens. Legacy JWT service-role keys still need both.
+ */
+export function supabaseAuthHeaders(key: string): Record<string, string> {
+  const headers: Record<string, string> = { apikey: key };
+  if (key.startsWith("eyJ")) headers.authorization = `Bearer ${key}`;
+  return headers;
+}
+
 export function assertStorageKey(key: string): void {
   if (!KEY_RE.test(key)) throw new Error(`Refusing unsafe storage key: ${key}`);
 }
@@ -87,10 +97,6 @@ class LocalStorage implements StorageDriver {
 class SupabaseStorage implements StorageDriver {
   readonly name = "supabase";
   private readonly base = `${env.SUPABASE_URL.replace(/\/+$/, "")}/storage/v1/object`;
-  private readonly auth = {
-    authorization: `Bearer ${env.SUPABASE_SERVICE_ROLE_KEY}`,
-    apikey: env.SUPABASE_SERVICE_ROLE_KEY,
-  };
 
   private url(key: string): string {
     assertStorageKey(key);
@@ -101,7 +107,7 @@ class SupabaseStorage implements StorageDriver {
     const response = await fetch(this.url(object.key), {
       method: "POST",
       headers: {
-        ...this.auth,
+        ...supabaseAuthHeaders(env.SUPABASE_SERVICE_ROLE_KEY),
         "content-type": object.contentType,
         "cache-control": "private, max-age=0",
         "x-upsert": "true",
@@ -114,22 +120,40 @@ class SupabaseStorage implements StorageDriver {
   }
 
   async remove(key: string): Promise<void> {
-    await fetch(this.url(key), { method: "DELETE", headers: this.auth }).catch(() => {});
+    await fetch(this.url(key), {
+      method: "DELETE",
+      headers: supabaseAuthHeaders(env.SUPABASE_SERVICE_ROLE_KEY),
+    }).catch(() => {});
   }
 
   async size(key: string): Promise<number | null> {
-    const response = await fetch(this.url(key), { method: "HEAD", headers: this.auth });
-    if (response.status === 404) return null;
+    const response = await fetch(this.url(key), {
+      method: "HEAD",
+      headers: supabaseAuthHeaders(env.SUPABASE_SERVICE_ROLE_KEY),
+    });
+    if (response.status === 400 || response.status === 404) return null;
+    if (response.status !== 200) {
+      throw new Error(`Supabase stat failed: ${response.status}`);
+    }
     const length = Number(response.headers.get("content-length"));
     return Number.isFinite(length) ? length : null;
   }
 
   async read(key: string, range?: AudioRange): Promise<AudioStream | null> {
-    const headers: Record<string, string> = { ...this.auth };
+    const headers: Record<string, string> = supabaseAuthHeaders(
+      env.SUPABASE_SERVICE_ROLE_KEY,
+    );
     if (range) headers.range = `bytes=${range.start}-${range.end}`;
 
     const response = await fetch(this.url(key), { headers });
     if (response.status === 404) return null;
+    if (response.status === 400) {
+      const body = await response.json().catch(() => null);
+      if (body && typeof body === "object" && "code" in body && body.code === "NoSuchKey") {
+        return null;
+      }
+      throw new Error("Supabase download failed: 400");
+    }
     if (response.status !== 200 && response.status !== 206) {
       throw new Error(`Supabase download failed: ${response.status}`);
     }

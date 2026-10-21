@@ -1,6 +1,7 @@
 import { afterAll, expect, test } from "bun:test";
 import { resolve } from "node:path";
 import { pathToFileURL } from "node:url";
+import { supabaseAuthHeaders } from "../src/lib/storage";
 
 const BUCKET = "transcripts";
 const KEY = "audio/11111111-1111-1111-1111-111111111111/22222222-2222-2222-2222-222222222222.webm";
@@ -29,7 +30,12 @@ const server = Bun.serve({
     }
 
     const bytes = stored.get(key);
-    if (!bytes) return new Response("missing", { status: 404 });
+    if (!bytes) {
+      return Response.json(
+        { code: "NoSuchKey", message: "Object not found" },
+        { status: 400 },
+      );
+    }
 
     if (request.method === "DELETE") {
       stored.delete(key);
@@ -66,6 +72,16 @@ const server = Bun.serve({
 });
 
 afterAll(() => server.stop(true));
+
+test("sends apikey for new secret keys and Bearer only for JWTs", () => {
+  expect(supabaseAuthHeaders("sb_secret_example")).toEqual({
+    apikey: "sb_secret_example",
+  });
+  expect(supabaseAuthHeaders("eyJhbGciOiJIUzI1NiJ9.payload.signature")).toEqual({
+    apikey: "eyJhbGciOiJIUzI1NiJ9.payload.signature",
+    authorization: "Bearer eyJhbGciOiJIUzI1NiJ9.payload.signature",
+  });
+});
 
 test("talks to Supabase Storage over its REST API", async () => {
   const moduleUrl = pathToFileURL(resolve(import.meta.dir, "../src/lib/storage.ts")).href;
@@ -135,7 +151,8 @@ test("talks to Supabase Storage over its REST API", async () => {
 
   const upload = captured.find((entry) => entry.method === "POST");
   expect(upload?.path).toBe(`/storage/v1/object/${BUCKET}/${KEY}`);
-  expect(upload?.headers.get("authorization")).toBe("Bearer service-role-key");
+  expect(upload?.headers.get("apikey")).toBe("service-role-key");
+  expect(upload?.headers.get("authorization")).toBeNull();
   expect(upload?.headers.get("x-upsert")).toBe("true");
   expect(upload?.headers.get("content-type")).toBe("audio/webm");
 
