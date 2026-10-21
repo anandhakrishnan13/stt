@@ -1,0 +1,173 @@
+import { z } from "zod";
+
+/* ------------------------------------------------------------------ */
+/* Error contract                                                      */
+/* ------------------------------------------------------------------ */
+
+export const ErrorCode = {
+  VALIDATION_ERROR: "VALIDATION_ERROR",
+  INVALID_CREDENTIALS: "INVALID_CREDENTIALS",
+  EMAIL_UNVERIFIED: "EMAIL_UNVERIFIED",
+  ACCOUNT_SUSPENDED: "ACCOUNT_SUSPENDED",
+  ACCOUNT_LOCKED: "ACCOUNT_LOCKED",
+  OTP_INVALID: "OTP_INVALID",
+  OTP_EXPIRED: "OTP_EXPIRED",
+  OTP_ATTEMPTS_EXCEEDED: "OTP_ATTEMPTS_EXCEEDED",
+  OTP_COOLDOWN: "OTP_COOLDOWN",
+  UNAUTHENTICATED: "UNAUTHENTICATED",
+  CSRF_ORIGIN: "CSRF_ORIGIN",
+  RATE_LIMITED: "RATE_LIMITED",
+  INTERNAL: "INTERNAL",
+} as const;
+
+export type ErrorCodeValue = (typeof ErrorCode)[keyof typeof ErrorCode];
+
+export type ApiErrorBody = {
+  error: {
+    code: ErrorCodeValue;
+    message: string;
+    details?: unknown;
+  };
+};
+
+/* ------------------------------------------------------------------ */
+/* Field schemas                                                       */
+/* ------------------------------------------------------------------ */
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
+const NAME_RE = /^[\p{L}\p{M}' .-]+$/u;
+
+const COMMON_PASSWORDS: Record<string, true> = {
+  password: true,
+  password1: true,
+  password12: true,
+  password123: true,
+  password1234: true,
+  qwertyuiop: true,
+  "1234567890": true,
+  letmein123: true,
+  admin12345: true,
+  welcome123: true,
+  iloveyou1: true,
+};
+
+export const emailSchema = z
+  .string({ error: "Email is required" })
+  .trim()
+  .toLowerCase()
+  .max(254, "Email is too long")
+  .regex(EMAIL_RE, "Enter a valid email address");
+
+export const firstNameSchema = z
+  .string({ error: "First name is required" })
+  .trim()
+  .min(1, "First name is required")
+  .max(60, "First name is too long")
+  .regex(NAME_RE, "First name contains invalid characters");
+
+export const lastNameSchema = z
+  .string({ error: "Last name is required" })
+  .trim()
+  .min(1, "Last name is required")
+  .max(60, "Last name is too long")
+  .regex(NAME_RE, "Last name contains invalid characters");
+
+export const passwordSchema = z
+  .string({ error: "Password is required" })
+  .min(10, "Use at least 10 characters")
+  .max(128, "Use at most 128 characters")
+  .refine((value) => /\p{L}/u.test(value), "Include at least one letter")
+  .refine((value) => /\d/.test(value), "Include at least one number")
+  .refine(
+    (value) => COMMON_PASSWORDS[value.toLowerCase()] !== true,
+    "This password is too common",
+  );
+
+export const otpCodeSchema = z
+  .string({ error: "Verification code is required" })
+  .trim()
+  .regex(/^\d{6}$/, "Enter the 6-digit code");
+
+export const signupSchema = z.object({
+  firstName: firstNameSchema,
+  lastName: lastNameSchema,
+  email: emailSchema,
+  password: passwordSchema,
+});
+
+export const loginSchema = z.object({
+  email: emailSchema,
+  password: z.string({ error: "Password is required" }).min(1, "Password is required").max(128),
+});
+
+export const verifyEmailSchema = z.object({
+  email: emailSchema,
+  code: otpCodeSchema,
+});
+
+export const resendOtpSchema = z.object({
+  email: emailSchema,
+});
+
+export const changePasswordSchema = z
+  .object({
+    currentPassword: z
+      .string({ error: "Current password is required" })
+      .min(1, "Current password is required")
+      .max(128),
+    code: otpCodeSchema,
+    newPassword: passwordSchema,
+  })
+  .refine((value) => value.currentPassword !== value.newPassword, {
+    path: ["newPassword"],
+    message: "Choose a password different from your current one",
+  });
+
+export const resetRequestSchema = z.object({
+  email: emailSchema,
+});
+
+export const resetConfirmSchema = z.object({
+  email: emailSchema,
+  code: otpCodeSchema,
+  newPassword: passwordSchema,
+});
+
+/* ------------------------------------------------------------------ */
+/* Response types                                                      */
+/* ------------------------------------------------------------------ */
+
+export type SignupInput = z.infer<typeof signupSchema>;
+export type LoginInput = z.infer<typeof loginSchema>;
+export type VerifyEmailInput = z.infer<typeof verifyEmailSchema>;
+export type ResendOtpInput = z.infer<typeof resendOtpSchema>;
+export type ChangePasswordInput = z.infer<typeof changePasswordSchema>;
+export type ResetRequestInput = z.infer<typeof resetRequestSchema>;
+export type ResetConfirmInput = z.infer<typeof resetConfirmSchema>;
+
+export type UserDTO = {
+  id: string;
+  email: string;
+  firstName: string;
+  lastName: string;
+  emailVerifiedAt: string | null;
+  createdAt: string;
+};
+
+export type MeResponse = { user: UserDTO };
+export type PendingResponse = { status: "pending_verification" };
+export type MessageResponse = { status: "accepted" };
+
+/* ------------------------------------------------------------------ */
+/* Helpers                                                             */
+/* ------------------------------------------------------------------ */
+
+/** First message per field, for form errors. */
+export function fieldErrors(error: z.ZodError): Record<string, string> {
+  const out: Record<string, string> = {};
+  for (const issue of error.issues) {
+    const key = issue.path.length > 0 ? issue.path.join(".") : "_";
+    if (!(key in out)) out[key] = issue.message;
+  }
+  return out;
+}

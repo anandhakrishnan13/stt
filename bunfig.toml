@@ -1,0 +1,4 @@
+# Running `bun test` from the repo root must behave like `bun run test`
+# (the API suite needs its env/database preload before any module loads).
+[test]
+preload = ["./apps/api/test/setup.ts"]

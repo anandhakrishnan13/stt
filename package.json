@@ -1,0 +1,19 @@
+{
+  "name": "speech-to-text",
+  "private": true,
+  "workspaces": [
+    "apps/*",
+    "packages/*"
+  ],
+  "scripts": {
+    "dev:api": "bun run --cwd apps/api dev",
+    "dev:web": "bun run --cwd apps/web dev",
+    "test": "bun run --cwd apps/api test",
+    "typecheck": "bun run --cwd apps/api typecheck && bun run --cwd apps/web typecheck",
+    "db:generate": "bun run --cwd apps/api db:generate",
+    "db:migrate": "bun run --cwd apps/api db:migrate",
+    "services:up": "docker compose up -d",
+    "services:down": "docker compose down",
+    "setup": "bun scripts/setup-env.ts"
+  }
+}
