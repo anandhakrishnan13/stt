@@ -1,5 +1,6 @@
 "use client";
 
+import type { SegmentDTO } from "@stt/shared";
 import { Loader2, Mic, Square } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
@@ -17,6 +18,9 @@ export function Composer() {
   const router = useRouter();
   const [state, setState] = useState<ComposerState>({ phase: "idle" });
   const [elapsedMs, setElapsedMs] = useState(0);
+  const [lines, setLines] = useState<SegmentDTO[]>([]);
+  const [interim, setInterim] = useState("");
+  const [notice, setNotice] = useState<string | null>(null);
   const recorderRef = useRef<VoiceRecorder | null>(null);
 
   useEffect(() => {
@@ -38,8 +42,22 @@ export function Composer() {
 
   async function start() {
     setState({ phase: "starting" });
+    setLines([]);
+    setInterim("");
+    setNotice(null);
     try {
-      recorderRef.current = await VoiceRecorder.start();
+      recorderRef.current = await VoiceRecorder.start({
+        onSegment: (segment) => {
+          setLines((current) =>
+            current.some((line) => line.id === segment.id)
+              ? current.map((line) => (line.id === segment.id ? segment : line))
+              : [...current, segment],
+          );
+          setInterim("");
+        },
+        onInterim: setInterim,
+        onTranscriptionError: (message) => setNotice(message),
+      });
       setState({ phase: "recording" });
     } catch (error) {
       setState({ phase: "error", message: error instanceof Error ? error.message : "Recording failed." });
@@ -73,7 +91,7 @@ export function Composer() {
   const recording = state.phase === "recording";
   const busy = state.phase === "starting" || state.phase === "finishing";
 
-  const note =
+  const note = notice ?? (
     state.phase === "recording"
       ? `Recording · ${formatClock(elapsedMs)} — audio uploads as you speak`
       : state.phase === "starting"
@@ -82,7 +100,7 @@ export function Composer() {
           ? "Saving the recording…"
           : state.phase === "error"
             ? state.message
-            : "Hindi, English, or both — the mic is live";
+            : "Hindi, English, or both — the mic is live");
 
   return (
     <div className="mx-auto w-full max-w-3xl shrink-0 px-4 pb-5">
@@ -94,6 +112,22 @@ export function Composer() {
             : "border-slate-200 dark:border-slate-800",
         )}
       >
+        {lines.length > 0 ? (
+          <div
+            aria-live="polite"
+            aria-label="Live transcript"
+            className="max-h-40 space-y-1 overflow-y-auto px-3 pb-2 pt-1 text-sm"
+          >
+            {lines.map((line) => (
+              <p key={line.id} className="text-slate-800 dark:text-slate-200">
+                {line.text}
+              </p>
+            ))}
+            {interim ? (
+              <p className="text-slate-400 dark:text-slate-500">{interim}</p>
+            ) : null}
+          </div>
+        ) : null}
         <div className="flex items-end gap-2 px-2">
           <label htmlFor="spoken-input" className="sr-only">
             Spoken input

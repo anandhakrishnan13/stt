@@ -1,4 +1,6 @@
+import type { SegmentDTO } from "@stt/shared";
 import { api } from "@/lib/api";
+import { LiveTranscriber } from "@/lib/pcm-stream";
 import { TRANSCRIPTS_CHANGED } from "@/lib/transcripts";
 
 /**
@@ -39,6 +41,12 @@ function describeMediaError(error: unknown): string {
 
 export type RecordingResult = { id: string; durationMs: number };
 
+export type RecordingCallbacks = {
+  onSegment?: (segment: SegmentDTO) => void;
+  onInterim?: (text: string) => void;
+  onTranscriptionError?: (message: string) => void;
+};
+
 export class VoiceRecorder {
   private readonly stream: MediaStream;
   private readonly recorder: MediaRecorder;
@@ -48,6 +56,7 @@ export class VoiceRecorder {
   private uploadFailure: Error | null = null;
   private seq = 0;
   private stopped = false;
+  private live: LiveTranscriber | null = null;
 
   private constructor(stream: MediaStream, recorder: MediaRecorder, transcriptId: string) {
     this.stream = stream;
@@ -55,7 +64,7 @@ export class VoiceRecorder {
     this.transcriptId = transcriptId;
   }
 
-  static async start(): Promise<VoiceRecorder> {
+  static async start(callbacks: RecordingCallbacks = {}): Promise<VoiceRecorder> {
     if (typeof navigator === "undefined" || !navigator.mediaDevices?.getUserMedia) {
       throw new RecordingError("This browser cannot record audio.");
     }
@@ -96,6 +105,17 @@ export class VoiceRecorder {
       const instance = new VoiceRecorder(stream, recorder, created.transcript.id);
       instance.attach();
       recorder.start(CHUNK_INTERVAL_MS);
+
+      // Archive upload and live transcription both consume the same stream.
+      instance.live = await LiveTranscriber.start(stream, created.transcript.id, {
+        onSegment: callbacks.onSegment ?? (() => {}),
+        onInterim: callbacks.onInterim,
+        onError: callbacks.onTranscriptionError,
+      }).catch(() => {
+        callbacks.onTranscriptionError?.("Live transcription is unavailable; audio is still recording.");
+        return null;
+      });
+
       return instance;
     } catch (error) {
       for (const track of stream.getTracks()) track.stop();
@@ -171,6 +191,9 @@ export class VoiceRecorder {
       throw this.uploadFailure;
     }
 
+    await this.live?.stop();
+    this.live = null;
+
     const result = await api.finishRecording(this.transcriptId, durationMs);
     window.dispatchEvent(new Event(TRANSCRIPTS_CHANGED));
     return { id: result.transcript.id, durationMs: result.transcript.durationMs };
@@ -179,6 +202,8 @@ export class VoiceRecorder {
   async cancel(): Promise<void> {
     await this.stopRecorder();
     await this.uploadChain;
+    this.live?.close();
+    this.live = null;
     this.releaseStream();
     await api.abortRecording(this.transcriptId).catch(() => {});
     window.dispatchEvent(new Event(TRANSCRIPTS_CHANGED));

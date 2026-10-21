@@ -183,6 +183,25 @@ export type StartRecordingInput = z.infer<typeof startRecordingSchema>;
 export type FinishRecordingInput = z.infer<typeof finishRecordingSchema>;
 export type TranscriptStatus = "recording" | "ready" | "failed";
 
+export type SegmentDTO = {
+  id: string;
+  seq: number;
+  text: string;
+  startMs: number;
+  endMs: number;
+};
+
+/** Server → browser messages on the live transcription socket. */
+export type StreamEvent =
+  | { type: "ready"; transcriptId: string }
+  | { type: "segment"; segment: SegmentDTO }
+  | { type: "interim"; text: string }
+  | { type: "error"; message: string }
+  | { type: "done" };
+
+/** Browser → server: binary frames are 16 kHz mono PCM (Int16LE); JSON frames are control. */
+export type StreamCommand = { type: "stop" };
+
 export type TranscriptDTO = {
   id: string;
   title: string;
@@ -200,7 +219,7 @@ export type TranscriptListResponse = {
   nextCursor: string | null;
 };
 
-export type TranscriptResponse = { transcript: TranscriptDTO };
+export type TranscriptResponse = { transcript: TranscriptDTO; segments?: SegmentDTO[] };
 
 export type UserDTO = {
   id: string;

@@ -1,18 +1,18 @@
 "use client";
 
-import type { TranscriptDTO } from "@stt/shared";
+import type { SegmentDTO, TranscriptDTO } from "@stt/shared";
 import { ArrowLeft, AudioLines } from "lucide-react";
 import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ApiError, api, audioUrl } from "@/lib/api";
-import { ENGINE_LABEL, formatDuration, formatTranscriptDate } from "@/lib/transcripts";
+import { ENGINE_LABEL, formatClock, formatDuration, formatTranscriptDate } from "@/lib/transcripts";
 
 type State =
   | { status: "loading" }
   | { status: "missing" }
   | { status: "error" }
-  | { status: "ready"; transcript: TranscriptDTO };
+  | { status: "ready"; transcript: TranscriptDTO; segments: SegmentDTO[] };
 
 export default function TranscriptPage() {
   const params = useParams<{ id: string }>();
@@ -27,7 +27,13 @@ export default function TranscriptPage() {
     void (async () => {
       try {
         const result = await api.getTranscript(id);
-        if (!cancelled) setState({ status: "ready", transcript: result.transcript });
+        if (!cancelled) {
+          setState({
+            status: "ready",
+            transcript: result.transcript,
+            segments: result.segments ?? [],
+          });
+        }
       } catch (error) {
         if (cancelled) return;
         setState({
@@ -72,7 +78,7 @@ export default function TranscriptPage() {
     );
   }
 
-  const { transcript } = state;
+  const { transcript, segments } = state;
   const meta = [
     formatTranscriptDate(transcript.createdAt),
     formatDuration(transcript.durationMs),
@@ -105,15 +111,30 @@ export default function TranscriptPage() {
             </section>
           ) : null}
 
-          <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center dark:border-slate-700">
-            <AudioLines className="mx-auto size-6 text-slate-400" aria-hidden />
-            <p className="mt-3 text-sm font-medium">No speech captured yet</p>
-            <p className="mx-auto mt-1 max-w-sm text-xs text-slate-500 dark:text-slate-400">
-              {transcript.status === "failed"
-                ? "This recording ended before any audio arrived."
-                : "Segments appear here once transcription is connected."}
-            </p>
-          </div>
+          {segments.length > 0 ? (
+            <section aria-label="Transcript segments" className="space-y-3">
+              {segments.map((segment) => (
+                <article key={segment.id} className="rounded-xl px-1 py-1">
+                  <p className="mb-1 text-[11px] font-medium tabular-nums text-slate-400">
+                    {formatClock(segment.startMs)}
+                  </p>
+                  <p className="text-sm leading-relaxed text-slate-800 dark:text-slate-200">
+                    {segment.text}
+                  </p>
+                </article>
+              ))}
+            </section>
+          ) : (
+            <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center dark:border-slate-700">
+              <AudioLines className="mx-auto size-6 text-slate-400" aria-hidden />
+              <p className="mt-3 text-sm font-medium">No speech captured yet</p>
+              <p className="mx-auto mt-1 max-w-sm text-xs text-slate-500 dark:text-slate-400">
+                {transcript.status === "failed"
+                  ? "This recording ended before any audio arrived."
+                  : "Speak while recording and segments appear here as they are recognized."}
+              </p>
+            </div>
+          )}
         </div>
       </div>
     </main>

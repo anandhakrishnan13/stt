@@ -2,6 +2,7 @@ import cookie from "@fastify/cookie";
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
+import websocket from "@fastify/websocket";
 import Fastify, { type FastifyInstance } from "fastify";
 import { ZodError } from "zod";
 import { corsOrigins } from "./env";
@@ -9,6 +10,7 @@ import { limits } from "./lib/limits";
 import { AppError, errors } from "./lib/errors";
 import { authRoutes } from "./routes/auth";
 import { passwordRoutes } from "./routes/password";
+import { streamRoutes } from "./routes/stream";
 import { transcriptRoutes } from "./routes/transcripts";
 
 function httpStatus(error: unknown): number {
@@ -26,6 +28,9 @@ export async function buildApp(options: { logger?: boolean } = {}): Promise<Fast
   });
 
   await app.register(helmet, { contentSecurityPolicy: false });
+  await app.register(websocket, {
+    options: { maxPayload: 1024 * 1024 },
+  });
   await app.register(cookie);
   await app.register(cors, {
     origin: (origin, callback) => {
@@ -110,6 +115,7 @@ export async function buildApp(options: { logger?: boolean } = {}): Promise<Fast
   await app.register(authRoutes, { prefix: "/auth" });
   await app.register(passwordRoutes, { prefix: "/auth" });
   await app.register(transcriptRoutes, { prefix: "/transcripts" });
+  await app.register(streamRoutes, { prefix: "/transcripts" });
 
   return app;
 }

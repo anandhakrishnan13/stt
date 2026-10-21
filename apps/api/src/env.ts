@@ -34,6 +34,13 @@ const envSchema = z.object({
   SUPABASE_BUCKET: z.string().default("transcripts"),
   MAX_AUDIO_BYTES: z.coerce.number().int().positive().default(64 * 1024 * 1024),
 
+  WHISPER_URL: z.string().default("http://127.0.0.1:8081"),
+  WHISPER_TIMEOUT_MS: z.coerce.number().int().positive().default(20_000),
+  STT_STEP_MS: z.coerce.number().int().min(500).default(2_000),
+  STT_MAX_WINDOW_MS: z.coerce.number().int().min(2_000).default(12_000),
+  STT_MIN_WINDOW_MS: z.coerce.number().int().min(200).default(800),
+  STT_SILENCE_RMS: z.coerce.number().int().nonnegative().default(220),
+
   SMTP_URL: z.string().default(""),
   SMTP_FROM: z.string().default("Speech to Text <no-reply@stt.local>"),
 });

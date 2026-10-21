@@ -11,13 +11,14 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { Readable } from "node:stream";
 import type { ReadableStream as WebReadableStream } from "node:stream/web";
 import { db } from "../db";
-import { transcripts, type TranscriptRow } from "../db/schema";
+import { segments, transcripts, type TranscriptRow } from "../db/schema";
 import { recordAudit } from "../lib/audit";
 import { requireAuth } from "../lib/auth-guard";
 import { env } from "../env";
 import { errors } from "../lib/errors";
 import { parseBody } from "../lib/http";
 import { appendChunk, discardStaged, readStaged, stagedBytes } from "../lib/recording-store";
+import { findOwnedTranscript } from "../lib/transcript-access";
 import { getStorage, type AudioRange } from "../lib/storage";
 
 const DEFAULT_LIMIT = 30;
@@ -57,23 +58,6 @@ function decodeCursor(raw: string): { createdAt: Date; id: string } | null {
 
 function escapeLike(value: string): string {
   return value.replace(/[\\%_]/g, (char) => `\\${char}`);
-}
-
-/** Ownership is part of the lookup: another user's row is indistinguishable from a missing one. */
-async function ownedTranscript(userId: string, id: string): Promise<TranscriptRow> {
-  const [row] = await db
-    .select()
-    .from(transcripts)
-    .where(
-      and(
-        eq(transcripts.id, id),
-        eq(transcripts.userId, userId),
-        isNull(transcripts.deletedAt),
-      ),
-    )
-    .limit(1);
-  if (!row) throw errors.notFound("Transcript not found");
-  return row;
 }
 
 function containerFor(mime: string): { mime: string; extension: "webm" | "m4a" | "ogg" } {
@@ -184,8 +168,24 @@ export async function transcriptRoutes(app: FastifyInstance): Promise<void> {
 
   app.get("/:id", { preHandler: requireAuth }, async (request) => {
     const { id } = request.params as { id: string };
-    const row = await ownedTranscript(currentUserId(request), id);
-    const response: TranscriptResponse = { transcript: toDTO(row) };
+    const row = await findOwnedTranscript(currentUserId(request), id);
+
+    const stored = await db
+      .select()
+      .from(segments)
+      .where(eq(segments.transcriptId, row.id))
+      .orderBy(segments.seq);
+
+    const response: TranscriptResponse = {
+      transcript: toDTO(row),
+      segments: stored.map((segment) => ({
+        id: segment.id,
+        seq: segment.seq,
+        text: segment.text,
+        startMs: segment.startMs,
+        endMs: segment.endMs,
+      })),
+    };
     return response;
   });
 
@@ -237,7 +237,7 @@ export async function transcriptRoutes(app: FastifyInstance): Promise<void> {
     }
 
     return serializeChunk(id, async () => {
-      const row = await ownedTranscript(userId, id);
+      const row = await findOwnedTranscript(userId, id);
       if (row.status !== "recording") throw errors.stateConflict("Recording is no longer active");
 
       // Retries of an already-applied chunk are harmless no-ops.
@@ -266,7 +266,7 @@ export async function transcriptRoutes(app: FastifyInstance): Promise<void> {
     const { id } = request.params as { id: string };
     const userId = currentUserId(request);
     const input = parseBody(finishRecordingSchema, request.body);
-    const row = await ownedTranscript(userId, id);
+    const row = await findOwnedTranscript(userId, id);
 
     if (row.status === "ready") {
       const existing: TranscriptResponse = { transcript: toDTO(row) };
@@ -324,7 +324,7 @@ export async function transcriptRoutes(app: FastifyInstance): Promise<void> {
   app.post("/:id/abort", { preHandler: requireAuth }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const userId = currentUserId(request);
-    const row = await ownedTranscript(userId, id);
+    const row = await findOwnedTranscript(userId, id);
 
     if (row.status === "recording") {
       await discardStaged(id);
@@ -346,7 +346,7 @@ export async function transcriptRoutes(app: FastifyInstance): Promise<void> {
 
   app.get("/:id/audio", { preHandler: requireAuth }, async (request, reply) => {
     const { id } = request.params as { id: string };
-    const row = await ownedTranscript(currentUserId(request), id);
+    const row = await findOwnedTranscript(currentUserId(request), id);
     if (!row.audioKey) throw errors.notFound("This transcript has no audio");
 
     const storage = getStorage();
@@ -377,7 +377,7 @@ export async function transcriptRoutes(app: FastifyInstance): Promise<void> {
     const { id } = request.params as { id: string };
     const userId = currentUserId(request);
     const input = parseBody(renameTranscriptSchema, request.body);
-    const row = await ownedTranscript(userId, id);
+    const row = await findOwnedTranscript(userId, id);
 
     if (row.title === input.title) {
       const unchanged: TranscriptResponse = { transcript: toDTO(row) };
@@ -406,7 +406,7 @@ export async function transcriptRoutes(app: FastifyInstance): Promise<void> {
   app.delete("/:id", { preHandler: requireAuth }, async (request, reply) => {
     const { id } = request.params as { id: string };
     const userId = currentUserId(request);
-    const row = await ownedTranscript(userId, id);
+    const row = await findOwnedTranscript(userId, id);
 
     await db.update(transcripts).set({ deletedAt: new Date() }).where(eq(transcripts.id, row.id));
     if (row.audioKey) await getStorage().remove(row.audioKey);

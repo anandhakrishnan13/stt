@@ -1,0 +1,115 @@
+import { env } from "../../env";
+
+export const SAMPLE_RATE = 16_000;
+export const BYTES_PER_MS = (SAMPLE_RATE * 2) / 1_000;
+
+export type Word = { text: string; startMs: number; endMs: number };
+
+export type Transcription = { text: string; language: string | null; words: Word[] };
+
+/** whisper-server expects a real WAV container, not raw PCM. */
+export function pcm16ToWav(pcm: Uint8Array, sampleRate = SAMPLE_RATE): Uint8Array {
+  const header = Buffer.alloc(44);
+  header.write("RIFF", 0, "ascii");
+  header.writeUInt32LE(36 + pcm.byteLength, 4);
+  header.write("WAVE", 8, "ascii");
+  header.write("fmt ", 12, "ascii");
+  header.writeUInt32LE(16, 16);
+  header.writeUInt16LE(1, 20);
+  header.writeUInt16LE(1, 22);
+  header.writeUInt32LE(sampleRate, 24);
+  header.writeUInt32LE(sampleRate * 2, 28);
+  header.writeUInt16LE(2, 32);
+  header.writeUInt16LE(16, 34);
+  header.write("data", 36, "ascii");
+  header.writeUInt32LE(pcm.byteLength, 40);
+  return new Uint8Array(Buffer.concat([header, Buffer.from(pcm)]));
+}
+
+/** RMS on Int16 samples; used to skip silence, where Whisper likes to hallucinate. */
+export function pcm16Rms(pcm: Uint8Array): number {
+  if (pcm.byteLength < 2) return 0;
+  const view = new DataView(pcm.buffer, pcm.byteOffset, pcm.byteLength);
+  const count = Math.floor(pcm.byteLength / 2);
+  let sum = 0;
+  for (let index = 0; index < count; index += 1) {
+    const sample = view.getInt16(index * 2, true);
+    sum += sample * sample;
+  }
+  return Math.sqrt(sum / count);
+}
+
+const NOISE_RE = /\[[^\]]*\]|\([^)]*\)|\*[^*]*\*/g;
+
+export function cleanTranscript(text: string): string {
+  return text
+    .replace(NOISE_RE, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+type VerbosePayload = {
+  text?: unknown;
+  language?: unknown;
+  segments?: { words?: { word?: unknown; start?: unknown; end?: unknown }[] }[];
+};
+
+/** Word timings let the gateway trim exactly what it committed. */
+function extractWords(payload: VerbosePayload, text: string, durationMs: number): Word[] {
+  const words: Word[] = [];
+  for (const segment of payload.segments ?? []) {
+    for (const word of segment.words ?? []) {
+      const value = typeof word.word === "string" ? word.word.trim() : "";
+      if (!value) continue;
+      const start = typeof word.start === "number" ? word.start : null;
+      const end = typeof word.end === "number" ? word.end : null;
+      words.push({
+        text: value,
+        startMs: Math.round((start ?? 0) * 1000),
+        endMs: Math.round((end ?? start ?? 0) * 1000),
+      });
+    }
+  }
+  if (words.length > 0) return words;
+
+  // Fallback when the server omits word timings: spread the text evenly.
+  const tokens = text.split(" ").filter(Boolean);
+  const step = tokens.length > 0 ? durationMs / tokens.length : 0;
+  return tokens.map((token, index) => ({
+    text: token,
+    startMs: Math.round(index * step),
+    endMs: Math.round((index + 1) * step),
+  }));
+}
+
+export async function transcribePcm(
+  pcm: Uint8Array,
+  prompt?: string,
+): Promise<Transcription> {
+  const wav = pcm16ToWav(pcm);
+  const form = new FormData();
+  form.set("file", new File([wav], "window.wav", { type: "audio/wav" }));
+  form.set("response_format", "verbose_json");
+  form.set("temperature", "0");
+  form.set("language", "auto");
+  if (prompt) form.set("prompt", prompt);
+
+  const response = await fetch(`${env.WHISPER_URL.replace(/\/+$/, "")}/inference`, {
+    method: "POST",
+    body: form,
+    signal: AbortSignal.timeout(env.WHISPER_TIMEOUT_MS),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Whisper returned ${response.status}`);
+  }
+
+  const payload = (await response.json()) as VerbosePayload;
+  const text = cleanTranscript(typeof payload.text === "string" ? payload.text : "");
+  const durationMs = (pcm.byteLength / 2 / SAMPLE_RATE) * 1000;
+  return {
+    text,
+    language: typeof payload.language === "string" ? payload.language.toLowerCase() : null,
+    words: extractWords(payload, text, durationMs),
+  };
+}

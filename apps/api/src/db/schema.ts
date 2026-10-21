@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import { index, integer, sqliteTable, text } from "drizzle-orm/sqlite-core";
+import { index, integer, sqliteTable, text, uniqueIndex } from "drizzle-orm/sqlite-core";
 
 const id = () =>
   text("id")
@@ -106,6 +106,22 @@ export const transcripts = sqliteTable(
     index("transcripts_user_created_idx").on(table.userId, table.createdAt),
     index("transcripts_user_deleted_idx").on(table.userId, table.deletedAt),
   ],
+);
+
+export const segments = sqliteTable(
+  "segments",
+  {
+    id: id(),
+    transcriptId: text("transcript_id")
+      .notNull()
+      .references(() => transcripts.id, { onDelete: "cascade" }),
+    seq: integer("seq").notNull(),
+    text: text("text").notNull(),
+    startMs: integer("start_ms").notNull(),
+    endMs: integer("end_ms").notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [uniqueIndex("segments_transcript_seq_idx").on(table.transcriptId, table.seq)],
 );
 
 export const auditEvents = sqliteTable(
