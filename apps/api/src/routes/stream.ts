@@ -1,13 +1,14 @@
 import type { SegmentDTO, StreamCommand, StreamEvent } from "@stt/shared";
-import { eq, max } from "drizzle-orm";
+import { eq, max, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import type { WebSocket } from "ws";
 import { db } from "../db";
 import { segments, transcripts } from "../db/schema";
 import { env } from "../env";
 import { requireAuth } from "../lib/auth-guard";
+import { SttRateLimitError, transcribePcm } from "../lib/stt";
 import { commonPrefix, joinWords } from "../lib/stt/agreement";
-import { pcm16Rms, transcribePcm, type Word } from "../lib/stt/whisper";
+import { pcm16Rms, type Word } from "../lib/stt/whisper";
 import { findOwnedTranscript } from "../lib/transcript-access";
 
 const SAMPLES_PER_MS = 16;
@@ -17,6 +18,15 @@ const ERROR_COOLDOWN_MS = 5_000;
 
 function durationOf(bytes: Buffer): number {
   return bytes.byteLength / 2 / SAMPLES_PER_MS;
+}
+
+function engineName(): "groq-whisper" | "whisper-local" {
+  return env.STT_PROVIDER === "groq" ? "groq-whisper" : "whisper-local";
+}
+
+function titleFromSpeech(text: string): string {
+  const clean = text.replace(/\s+/g, " ").trim();
+  return clean.length > 80 ? `${clean.slice(0, 77).trimEnd()}…` : clean;
 }
 
 export async function streamRoutes(app: FastifyInstance): Promise<void> {
@@ -75,6 +85,7 @@ async function runSession(socket: WebSocket, userId: string, transcriptId: strin
   let context = "";
   let stopped = false;
   let lastErrorAt = 0;
+  let cooldownUntil = 0;
   let chain: Promise<void> = Promise.resolve();
 
   const advance = (bytes: number): void => {
@@ -94,7 +105,7 @@ async function runSession(socket: WebSocket, userId: string, transcriptId: strin
   const continues = (startMs: number): boolean =>
     lastCommitted !== null &&
     startMs - lastCommitted.endMs <= 600 &&
-    !/[.!?…]$/.test(lastCommitted.text);
+    !/[.!?…।]$/.test(lastCommitted.text);
 
   const commit = async (words: Word[], startMs: number): Promise<void> => {
     const text = joinWords(words);
@@ -141,7 +152,15 @@ async function runSession(socket: WebSocket, userId: string, transcriptId: strin
       lastCommitted = segment;
       await db
         .update(transcripts)
-        .set({ engine: "whisper-local", language: detectedLanguage, updatedAt: new Date() })
+        .set({
+          engine: engineName(),
+          language: detectedLanguage,
+          title: sql`case
+            when ${transcripts.title} like ${"Recording · %"} then ${titleFromSpeech(text)}
+            else ${transcripts.title}
+          end`,
+          updatedAt: new Date(),
+        })
         .where(eq(transcripts.id, transcriptId));
 
       send({ type: "segment", segment });
@@ -151,8 +170,9 @@ async function runSession(socket: WebSocket, userId: string, transcriptId: strin
   };
 
   const runPass = async (final: boolean): Promise<void> => {
+    if (Date.now() < cooldownUntil) return;
     const availableMs = durationOf(buffer);
-    if (availableMs < env.STT_MIN_WINDOW_MS) return;
+    if (final ? availableMs <= 0 : availableMs < env.STT_MIN_WINDOW_MS) return;
     if (!final && availableMs - lastInferredMs < env.STT_STEP_MS) return;
 
     const snapshot = buffer;
@@ -197,7 +217,16 @@ async function runSession(socket: WebSocket, userId: string, transcriptId: strin
 
       const interim = joinWords(previousWords);
       if (interim) send({ type: "interim", text: interim });
-    } catch {
+    } catch (error) {
+      if (error instanceof SttRateLimitError) {
+        cooldownUntil = Date.now() + error.retryAfterMs;
+        lastInferredMs = 0;
+        reportError(
+          `Transcription is rate limited; retrying in ${Math.ceil(error.retryAfterMs / 1000)}s.`,
+        );
+        setTimeout(() => kick(), error.retryAfterMs + 50);
+        return;
+      }
       reportError("Transcription engine did not answer; retrying");
     }
   };
@@ -210,6 +239,7 @@ async function runSession(socket: WebSocket, userId: string, transcriptId: strin
   /** Keeps working through buffered audio without waiting for the next frame. */
   const kick = (): void => {
     if (stopped) return;
+    if (Date.now() < cooldownUntil) return;
     if (durationOf(buffer) - lastInferredMs < env.STT_STEP_MS) return;
     void schedule(false).then(() => {
       if (durationOf(buffer) - lastInferredMs >= env.STT_STEP_MS) kick();
