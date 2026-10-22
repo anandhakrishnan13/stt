@@ -1,7 +1,28 @@
 import type { SegmentDTO, StreamEvent } from "@stt/shared";
+import { refreshSession } from "@/lib/api";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
-const STOP_TIMEOUT_MS = 8_000;
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL ??
+  (process.env.NODE_ENV === "production" ? "" : "http://localhost:3001");
+const STOP_TIMEOUT_MS =
+  Number(process.env.NEXT_PUBLIC_STT_STOP_TIMEOUT_MS) || 8_000;
+const RECONNECT_DELAYS_MS = (process.env.NEXT_PUBLIC_STT_RECONNECT_DELAYS_MS ??
+  "500,1000,2000,5000")
+  .split(",")
+  .map((value) => Number(value.trim()))
+  .filter((value) => Number.isFinite(value) && value > 0);
+// The access cookie lives for 15 minutes; refresh well before it expires, not
+// on every four-minute rotation (each refresh rotates the refresh token).
+const REFRESH_AFTER_MS =
+  Number(process.env.NEXT_PUBLIC_STT_REFRESH_AFTER_MS) || 10 * 60_000;
+
+function streamUrl(transcriptId: string): string {
+  if (API_URL) {
+    return `${API_URL.replace(/^http/, "ws")}/transcripts/${transcriptId}/stream`;
+  }
+  const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+  return `${protocol}//${window.location.host}/transcripts/${transcriptId}/stream`;
+}
 
 export type LiveCallbacks = {
   onSegment: (segment: SegmentDTO) => void;
@@ -11,70 +32,51 @@ export type LiveCallbacks = {
 
 /**
  * Streams 16 kHz PCM from a MediaStream to the API and surfaces finalized
- * segments. The audio graph is only wired through a muted sink so the worklet
- * runs without echoing the microphone to the speakers.
+ * segments. A serverless function closes its socket at the duration cap, so
+ * this class reconnects without tearing down the microphone graph and refreshes
+ * the session cookie before each attempt. The audio graph is only wired
+ * through a muted sink so the worklet runs without echoing the microphone.
  */
 export class LiveTranscriber {
-  private readonly socket: WebSocket;
+  private socket: WebSocket | null = null;
   private readonly context: AudioContext;
   private readonly source: MediaStreamAudioSourceNode;
   private readonly node: AudioWorkletNode;
   private readonly sink: GainNode;
+  private readonly transcriptId: string;
+  private readonly callbacks: LiveCallbacks;
   private readonly done: Promise<void>;
   private resolveDone: () => void = () => {};
   private closed = false;
+  private stopping = false;
+  private attempt = 0;
+  private retryTimer: ReturnType<typeof setTimeout> | null = null;
+  private rotateRequested = false;
+  private reportedDisconnect = false;
+  private lastRefreshAt = Date.now();
 
   private constructor(
-    socket: WebSocket,
     context: AudioContext,
     source: MediaStreamAudioSourceNode,
     node: AudioWorkletNode,
     sink: GainNode,
+    transcriptId: string,
     callbacks: LiveCallbacks,
   ) {
-    this.socket = socket;
     this.context = context;
     this.source = source;
     this.node = node;
     this.sink = sink;
+    this.transcriptId = transcriptId;
+    this.callbacks = callbacks;
 
     const done = Promise.withResolvers<void>();
     this.done = done.promise;
     this.resolveDone = done.resolve;
-    socket.addEventListener("message", (event) => {
-      let payload: StreamEvent;
-      try {
-        payload = JSON.parse(String(event.data)) as StreamEvent;
-      } catch {
-        return;
-      }
-
-      switch (payload.type) {
-        case "ready":
-          break;
-        case "segment":
-          callbacks.onSegment(payload.segment);
-          break;
-        case "interim":
-          callbacks.onInterim?.(payload.text);
-          break;
-        case "error":
-          callbacks.onError?.(payload.message);
-          break;
-        case "done":
-          this.resolveDone();
-          break;
-      }
-    });
-
-    socket.addEventListener("close", () => this.resolveDone());
-    socket.addEventListener("error", () => {
-      callbacks.onError?.("Lost the transcription connection.");
-      this.resolveDone();
-    });
 
     node.port.onmessage = (event: MessageEvent<ArrayBuffer>) => {
-      if (socket.readyState === WebSocket.OPEN) socket.send(event.data);
+      const socket = this.socket;
+      if (socket?.readyState === WebSocket.OPEN) socket.send(event.data);
     };
   }
 
@@ -83,16 +85,11 @@ export class LiveTranscriber {
     transcriptId: string,
     callbacks: LiveCallbacks,
   ): Promise<LiveTranscriber> {
-    const url = `${API_URL.replace(/^http/, "ws")}/transcripts/${transcriptId}/stream`;
-    const socket = new WebSocket(url);
-    socket.binaryType = "arraybuffer";
-
     const context = new AudioContext({ sampleRate: 16_000 });
     try {
       await context.audioWorklet.addModule("/worklet/pcm-processor.js");
     } catch (error) {
-      socket.close();
-      await context.close();
+      await context.close().catch(() => {});
       throw error;
     }
 
@@ -104,35 +101,180 @@ export class LiveTranscriber {
     node.connect(sink);
     sink.connect(context.destination);
 
-    const transcriber = new LiveTranscriber(socket, context, source, node, sink, callbacks);
+    const transcriber = new LiveTranscriber(
+      context,
+      source,
+      node,
+      sink,
+      transcriptId,
+      callbacks,
+    );
 
-    if (socket.readyState === WebSocket.CONNECTING) {
-      const opened = Promise.withResolvers<void>();
-      socket.addEventListener("open", () => opened.resolve(), { once: true });
-      socket.addEventListener("error", () => opened.reject(new Error("WebSocket failed")), {
-        once: true,
-      });
-      await opened.promise;
+    try {
+      await transcriber.connect();
+    } catch (error) {
+      transcriber.close();
+      throw error;
     }
 
     await context.resume().catch(() => {});
     return transcriber;
   }
 
+  private connect(): Promise<void> {
+    const socket = new WebSocket(streamUrl(this.transcriptId));
+    socket.binaryType = "arraybuffer";
+    this.socket = socket;
+
+    const opened = Promise.withResolvers<void>();
+    let settled = false;
+    const resolveOpen = (): void => {
+      if (settled) return;
+      settled = true;
+      opened.resolve();
+    };
+    const rejectOpen = (): void => {
+      if (settled) return;
+      settled = true;
+      opened.reject(new Error("WebSocket failed"));
+    };
+
+    socket.addEventListener("open", () => {
+      resolveOpen();
+      if (this.stopping) socket.send(JSON.stringify({ type: "stop" }));
+    });
+    socket.addEventListener("error", rejectOpen);
+    socket.addEventListener("close", (event) => {
+      rejectOpen();
+      this.handleClose(socket, event);
+    });
+    socket.addEventListener("message", (event) => this.handleMessage(event));
+
+    return opened.promise;
+  }
+
+  private handleMessage(event: MessageEvent): void {
+    let payload: StreamEvent;
+    try {
+      payload = JSON.parse(String(event.data)) as StreamEvent;
+    } catch {
+      return;
+    }
+
+    switch (payload.type) {
+      case "ready":
+        this.attempt = 0;
+        this.reportedDisconnect = false;
+        break;
+      case "segment":
+        this.callbacks.onSegment(payload.segment);
+        break;
+      case "interim":
+        this.callbacks.onInterim?.(payload.text);
+        break;
+      case "error":
+        this.callbacks.onError?.(payload.message);
+        break;
+      case "rotate":
+        this.rotateRequested = true;
+        this.socket?.close();
+        break;
+      case "done":
+        this.stopping = true;
+        this.resolveDone();
+        break;
+    }
+  }
+
+  private handleClose(socket: WebSocket, event: CloseEvent): void {
+    if (this.socket !== socket) return;
+    this.socket = null;
+
+    if (this.closed || this.stopping) {
+      this.resolveDone();
+      return;
+    }
+
+    // 1008 means the server refused this recording (missing, already finished,
+    // or closed); reconnecting would loop forever.
+    if (event.code === 1008) {
+      this.stopping = true;
+      this.callbacks.onError?.("Live transcription stopped.");
+      this.resolveDone();
+      return;
+    }
+
+    const wasRotation = this.rotateRequested;
+    this.rotateRequested = false;
+
+    if (wasRotation) {
+      this.attempt = 0;
+      this.scheduleReconnect(100);
+      return;
+    }
+
+    if (!this.reportedDisconnect) {
+      this.reportedDisconnect = true;
+      this.callbacks.onError?.("Live transcription disconnected; reconnecting…");
+    }
+
+    const delay =
+      RECONNECT_DELAYS_MS[Math.min(this.attempt, RECONNECT_DELAYS_MS.length - 1)] ??
+      5_000;
+    this.attempt += 1;
+    this.scheduleReconnect(delay);
+  }
+
+  private scheduleReconnect(delayMs: number): void {
+    if (this.closed || this.stopping) return;
+    this.clearRetry();
+    this.retryTimer = setTimeout(() => {
+      this.retryTimer = null;
+      void this.reconnect();
+    }, delayMs);
+  }
+
+  private async reconnect(): Promise<void> {
+    if (this.closed || this.stopping) return;
+
+    // The access cookie only lives for 15 minutes; refresh it before the new
+    // handshake so a one-hour recording can keep reconnecting.
+    if (Date.now() - this.lastRefreshAt >= REFRESH_AFTER_MS) {
+      if (await refreshSession()) this.lastRefreshAt = Date.now();
+      if (this.closed || this.stopping) return;
+    }
+
+    try {
+      await this.connect();
+    } catch {
+      // The close handler schedules the next attempt.
+    }
+  }
+
+  private clearRetry(): void {
+    if (this.retryTimer !== null) clearTimeout(this.retryTimer);
+    this.retryTimer = null;
+  }
+
   async stop(): Promise<void> {
     if (this.closed) return;
-    this.closed = true;
+    this.stopping = true;
+    this.clearRetry();
     this.node.port.onmessage = null;
 
-    if (this.socket.readyState === WebSocket.OPEN) {
-      this.socket.send(JSON.stringify({ type: "stop" }));
+    const socket = this.socket;
+    if (socket?.readyState === WebSocket.OPEN) {
+      socket.send(JSON.stringify({ type: "stop" }));
+    } else if (!socket) {
+      this.resolveDone();
     }
 
     await Promise.race([
       this.done,
-      new Promise((resolve) => setTimeout(resolve, STOP_TIMEOUT_MS)),
+      new Promise<void>((resolve) => setTimeout(resolve, STOP_TIMEOUT_MS)),
     ]);
 
+    this.closed = true;
     this.disconnect();
   }
 
@@ -140,16 +282,27 @@ export class LiveTranscriber {
   close(): void {
     if (this.closed) return;
     this.closed = true;
+    this.stopping = true;
+    this.clearRetry();
     this.node.port.onmessage = null;
+    this.resolveDone();
     this.disconnect();
   }
 
   private disconnect(): void {
+    this.clearRetry();
+    const socket = this.socket;
+    this.socket = null;
+    if (
+      socket &&
+      (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)
+    ) {
+      socket.close();
+    }
+
     this.source.disconnect();
     this.node.disconnect();
     this.sink.disconnect();
     void this.context.close().catch(() => {});
-    if (this.socket.readyState === WebSocket.OPEN) this.socket.close();
-    else if (this.socket.readyState === WebSocket.CONNECTING) this.socket.close();
   }
 }

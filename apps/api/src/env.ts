@@ -3,6 +3,7 @@ import { z } from "zod";
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
   PORT: z.coerce.number().int().positive().default(3001),
+  APP_NAME: z.string().min(1).default("Speech to Text"),
   DATABASE_URL: z
     .string()
     .min(1)
@@ -16,11 +17,19 @@ const envSchema = z.object({
     .default("false")
     .transform((value) => value === "true"),
   DATABASE_POOL_MAX: z.coerce.number().int().positive().default(5),
+  DATABASE_CONNECT_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(10),
+  DATABASE_IDLE_TIMEOUT_SECONDS: z.coerce.number().int().positive().default(20),
+  DATABASE_MAX_LIFETIME_SECONDS: z.coerce.number().int().positive().default(600),
   PUBLIC_APP_URL: z.string().default("http://localhost:3000"),
   CORS_ORIGINS: z.string().default("http://localhost:3000"),
 
   JWT_SECRET: z.string().min(32, "JWT_SECRET must be at least 32 characters"),
   OTP_PEPPER: z.string().min(32, "OTP_PEPPER must be at least 32 characters"),
+
+  ARGON2_PARALLELISM: z.coerce.number().int().min(1).max(16).default(1),
+  ARGON2_ITERATIONS: z.coerce.number().int().min(1).max(10).default(2),
+  ARGON2_MEMORY_KIB: z.coerce.number().int().min(8 * 1024).max(256 * 1024).default(19_456),
+  ARGON2_HASH_LENGTH: z.coerce.number().int().min(16).max(64).default(32),
 
   ACCESS_TOKEN_TTL_SECONDS: z.coerce.number().int().positive().default(900),
   REFRESH_TOKEN_TTL_DAYS: z.coerce.number().int().positive().default(30),
@@ -39,12 +48,15 @@ const envSchema = z.object({
   LOGIN_MAX_FAILURES: z.coerce.number().int().positive().default(5),
   LOGIN_LOCK_MINUTES: z.coerce.number().int().positive().default(15),
 
+  /** Rotate the live socket before the serverless function duration cap. */
+  WS_SESSION_MAX_MS: z.coerce.number().int().min(1_000).default(240_000),
+
   STORAGE_DRIVER: z.enum(["local", "supabase"]).default("local"),
   STORAGE_DIR: z.string().default("./storage"),
   SUPABASE_URL: z.string().default(""),
   SUPABASE_SERVICE_ROLE_KEY: z.string().default(""),
   SUPABASE_BUCKET: z.string().default("transcripts"),
-  MAX_AUDIO_BYTES: z.coerce.number().int().positive().default(10 * 1024 * 1024),
+  MAX_AUDIO_BYTES: z.coerce.number().int().positive().default(15 * 1024 * 1024),
 
   STT_PROVIDER: z.enum(["groq", "whisper"]).default("groq"),
   STT_LANGUAGE: z.string().default(""),
@@ -64,6 +76,10 @@ const envSchema = z.object({
   STT_MAX_WINDOW_MS: z.coerce.number().int().min(2_000).default(6_000),
   STT_MIN_WINDOW_MS: z.coerce.number().int().min(200).default(1_500),
   STT_SILENCE_RMS: z.coerce.number().int().nonnegative().default(220),
+  STT_MAX_BUFFER_MS: z.coerce.number().int().min(2_000).default(60_000),
+  STT_CONTEXT_CHARS: z.coerce.number().int().min(0).max(2_000).default(200),
+  STT_ERROR_COOLDOWN_MS: z.coerce.number().int().nonnegative().default(5_000),
+  STT_MAX_FINAL_COOLDOWN_WAIT_MS: z.coerce.number().int().positive().default(10_000),
 
   SMTP_URL: z.string().default(""),
   SMTP_FROM: z.string().default("Speech to Text <no-reply@stt.local>"),

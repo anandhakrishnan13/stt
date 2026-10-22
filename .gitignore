@@ -1,8 +1,12 @@
 node_modules/
 .next/
 dist/
+.vercel/
+.superpowers/
+docs/superpowers/plans/
 .env
-.env.local
+.env.*
+!.env.example
 *.log
 .DS_Store
 drizzle/meta/*.json.bak

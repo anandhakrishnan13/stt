@@ -197,6 +197,7 @@ export type StreamEvent =
   | { type: "segment"; segment: SegmentDTO }
   | { type: "interim"; text: string }
   | { type: "error"; message: string }
+  | { type: "rotate" }
   | { type: "done" };
 
 /** Browser → server: binary frames are 16 kHz mono PCM (Int16LE); JSON frames are control. */

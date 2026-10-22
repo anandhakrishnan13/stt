@@ -1,9 +1,11 @@
 import { randomUUID } from "node:crypto";
 import {
+  customType,
   index,
   integer,
   jsonb,
   pgTable,
+  primaryKey,
   text,
   timestamp,
   uniqueIndex,
@@ -18,6 +20,13 @@ const createdAt = () =>
   timestamp("created_at", { withTimezone: true })
     .notNull()
     .$defaultFn(() => new Date());
+
+/** Postgres has no native Drizzle bytea column; chunks are stored as Buffer. */
+const bytea = customType<{ data: Buffer; driverData: Buffer }>({
+  dataType() {
+    return "bytea";
+  },
+});
 
 export const users = pgTable(
   "users",
@@ -116,6 +125,22 @@ export const transcripts = pgTable(
   ],
 );
 
+export const recordingChunks = pgTable(
+  "recording_chunks",
+  {
+    transcriptId: text("transcript_id")
+      .notNull()
+      .references(() => transcripts.id, { onDelete: "cascade" }),
+    seq: integer("seq").notNull(),
+    bytes: bytea("bytes").notNull(),
+    createdAt: createdAt(),
+  },
+  (table) => [
+    primaryKey({ columns: [table.transcriptId, table.seq] }),
+    index("recording_chunks_created_idx").on(table.createdAt),
+  ],
+);
+
 export const segments = pgTable(
   "segments",
   {
@@ -151,3 +176,4 @@ export type UserRow = typeof users.$inferSelect;
 export type RefreshTokenRow = typeof refreshTokens.$inferSelect;
 
 export type TranscriptRow = typeof transcripts.$inferSelect;
+export type RecordingChunkRow = typeof recordingChunks.$inferSelect;

@@ -1,9 +1,6 @@
 import { buildApp } from "./app";
 import { closeDb } from "./db";
-import { runMigrations } from "./db/migrate";
 import { env } from "./env";
-
-await runMigrations();
 
 const app = await buildApp({ logger: true });
 

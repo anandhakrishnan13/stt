@@ -5,7 +5,7 @@ import rateLimit from "@fastify/rate-limit";
 import websocket from "@fastify/websocket";
 import Fastify, { type FastifyInstance } from "fastify";
 import { ZodError } from "zod";
-import { corsOrigins } from "./env";
+import { corsOrigins, env } from "./env";
 import { limits } from "./lib/limits";
 import { AppError, errors } from "./lib/errors";
 import { authRoutes } from "./routes/auth";
@@ -60,7 +60,7 @@ export async function buildApp(options: { logger?: boolean } = {}): Promise<Fast
   // Raw audio chunks: one request per second while recording, so buffers stay small.
   app.addContentTypeParser(
     "application/octet-stream",
-    { parseAs: "buffer", bodyLimit: 8 * 1024 * 1024 },
+    { parseAs: "buffer", bodyLimit: env.MAX_AUDIO_BYTES },
     (_request, body, done) => done(null, body),
   );
 

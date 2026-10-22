@@ -1,8 +1,9 @@
 import { afterAll, beforeAll, beforeEach, describe, expect, test } from "bun:test";
+import { eq } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { randomUUID } from "node:crypto";
 import { buildApp } from "../src/app";
-import { db } from "../src/db";
+import { db, sqlClient } from "../src/db";
 import { resetDb } from "./db";
 import { transcripts, users } from "../src/db/schema";
 import { ACCESS_COOKIE } from "../src/lib/cookies";
@@ -64,6 +65,13 @@ function finish(id: string, durationMs = 2_500, cookie = ownerCookie) {
   });
 }
 
+async function stagedRows(id: string): Promise<{ seq: number; size: number }[]> {
+  return sqlClient.unsafe<{ seq: number; size: number }[]>(
+    "select seq, length(bytes)::int as size from recording_chunks where transcript_id = $1 order by seq",
+    [id],
+  );
+}
+
 beforeAll(async () => {
   app = await buildApp();
   await app.ready();
@@ -109,6 +117,76 @@ describe("recording pipeline", () => {
     const second = await sendChunk(id, 1, Buffer.from("-second"));
     expect(second.statusCode).toBe(202);
     expect((second.json() as { bytes: number }).bytes).toBe("first-second".length);
+  });
+
+  test("stores chunks in the database and ignores retries", async () => {
+    const { id } = await startRecording();
+
+    expect((await sendChunk(id, 0, Buffer.from("first"))).statusCode).toBe(202);
+    expect((await sendChunk(id, 0, Buffer.from("first"))).statusCode).toBe(204);
+    expect((await sendChunk(id, 1, Buffer.from("-second"))).statusCode).toBe(202);
+
+    expect(await stagedRows(id)).toEqual([
+      { seq: 0, size: 5 },
+      { seq: 1, size: 7 },
+    ]);
+
+    const [row] = await db
+      .select({ audioBytes: transcripts.audioBytes })
+      .from(transcripts)
+      .where(eq(transcripts.id, id));
+    expect(row?.audioBytes).toBe(12);
+  });
+
+  test("finishing removes staged chunks", async () => {
+    const { id } = await startRecording();
+    await sendChunk(id, 0, Buffer.from("audio"));
+    expect(await stagedRows(id)).toHaveLength(1);
+
+    expect((await finish(id)).statusCode).toBe(200);
+    expect(await stagedRows(id)).toEqual([]);
+  });
+
+  test("aborting removes staged chunks", async () => {
+    const { id } = await startRecording();
+    await sendChunk(id, 0, Buffer.from("audio"));
+
+    const aborted = await app.inject({
+      method: "POST",
+      url: `/transcripts/${id}/abort`,
+      headers: { cookie: ownerCookie },
+    });
+    expect(aborted.statusCode).toBe(204);
+    expect(await stagedRows(id)).toEqual([]);
+  });
+
+  test("deleting an unfinished recording removes staged chunks", async () => {
+    const { id } = await startRecording();
+    await sendChunk(id, 0, Buffer.from("audio"));
+
+    const deleted = await app.inject({
+      method: "DELETE",
+      url: `/transcripts/${id}`,
+      headers: { cookie: ownerCookie },
+    });
+    expect(deleted.statusCode).toBe(204);
+    expect(await stagedRows(id)).toEqual([]);
+  });
+
+  test("refuses to finish when a staged chunk is missing", async () => {
+    const { id } = await startRecording();
+    await sqlClient.unsafe(
+      "insert into recording_chunks (transcript_id, seq, bytes, created_at) values ($1, $2, $3, now()), ($1, $4, $5, now())",
+      [id, 0, Buffer.from("a"), 2, Buffer.from("c")],
+    );
+    await db
+      .update(transcripts)
+      .set({ chunkSeq: 2, audioBytes: 2 })
+      .where(eq(transcripts.id, id));
+
+    const res = await finish(id);
+    expect(res.statusCode).toBe(409);
+    expect(await stagedRows(id)).toHaveLength(2);
   });
 
   test("stores the assembled audio and serves it with range support", async () => {

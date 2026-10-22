@@ -8,6 +8,13 @@
       "when": 1792587584477,
       "tag": "0000_outgoing_cannonball",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "7",
+      "when": 1792654171979,
+      "tag": "0001_common_tigra",
+      "breakpoints": true
     }
   ]
 }

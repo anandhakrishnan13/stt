@@ -15,8 +15,12 @@ const MIME_CANDIDATES = [
   "audio/ogg;codecs=opus",
 ] as const;
 
-const CHUNK_INTERVAL_MS = 1_000;
-const MAX_DURATION_MS = 60 * 60 * 1_000;
+const CHUNK_INTERVAL_MS =
+  Number(process.env.NEXT_PUBLIC_RECORDING_CHUNK_INTERVAL_MS) || 1_000;
+const MAX_DURATION_MS =
+  Number(process.env.NEXT_PUBLIC_RECORDING_MAX_DURATION_MS) || 60 * 60 * 1_000;
+const AUDIO_BITS_PER_SECOND =
+  Number(process.env.NEXT_PUBLIC_RECORDING_AUDIO_BITS_PER_SECOND) || 24_000;
 
 export class RecordingError extends Error {
   constructor(message: string) {
@@ -90,7 +94,7 @@ export class VoiceRecorder {
     let recorder: MediaRecorder;
     try {
       recorder = new MediaRecorder(stream, {
-        audioBitsPerSecond: 24_000,
+        audioBitsPerSecond: AUDIO_BITS_PER_SECOND,
         ...(mimeType ? { mimeType } : {}),
       });
     } catch {

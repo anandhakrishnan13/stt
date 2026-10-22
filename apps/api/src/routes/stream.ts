@@ -1,5 +1,5 @@
 import type { SegmentDTO, StreamCommand, StreamEvent } from "@stt/shared";
-import { eq, max, sql } from "drizzle-orm";
+import { desc, eq, max, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
 import { setTimeout as delay } from "node:timers/promises";
 import type { WebSocket } from "ws";
@@ -9,17 +9,17 @@ import { env } from "../env";
 import { requireAuth } from "../lib/auth-guard";
 import { SttRateLimitError, transcribePcm } from "../lib/stt";
 import { commonPrefix, joinWords } from "../lib/stt/agreement";
-import { pcm16Rms, type Word } from "../lib/stt/whisper";
+import { pcm16Rms, SAMPLE_RATE, type Word } from "../lib/stt/whisper";
 import { findOwnedTranscript } from "../lib/transcript-access";
 
-const SAMPLES_PER_MS = 16;
-const CONTEXT_CHARS = 200;
-const MAX_BUFFER_MS = 60_000;
-const ERROR_COOLDOWN_MS = 5_000;
+const SAMPLES_PER_MS = SAMPLE_RATE / 1_000;
+const CONTEXT_CHARS = env.STT_CONTEXT_CHARS;
+const MAX_BUFFER_MS = env.STT_MAX_BUFFER_MS;
+const ERROR_COOLDOWN_MS = env.STT_ERROR_COOLDOWN_MS;
 /** Whisper hallucinates on near-empty audio, so the final pass needs a floor. */
 const FINAL_MIN_WINDOW_MS = 200;
 /** Longest a stop request waits for a rate-limit cooldown before giving up. */
-const MAX_FINAL_COOLDOWN_WAIT_MS = 10_000;
+const MAX_FINAL_COOLDOWN_WAIT_MS = env.STT_MAX_FINAL_COOLDOWN_WAIT_MS;
 const RETRY_TIMER_SLACK_MS = 50;
 
 function durationOf(bytes: Buffer): number {
@@ -82,17 +82,39 @@ async function runSession(socket: WebSocket, userId: string, transcriptId: strin
     .where(eq(segments.transcriptId, transcriptId));
   let nextSeq = (latest?.seq ?? -1) + 1;
 
+  // A reconnect creates a fresh session. Seed it from the transcript's wall
+  // clock and the last committed text so timestamps stay absolute and the
+  // engine keeps its language/context instead of starting cold.
+  const recent = await db
+    .select({
+      id: segments.id,
+      seq: segments.seq,
+      text: segments.text,
+      startMs: segments.startMs,
+      endMs: segments.endMs,
+    })
+    .from(segments)
+    .where(eq(segments.transcriptId, transcriptId))
+    .orderBy(desc(segments.seq))
+    .limit(3);
+  recent.reverse();
+
   let buffer = Buffer.alloc(0);
-  let bufferStartMs = 0;
+  let bufferStartMs = Math.max(0, Date.now() - row.createdAt.getTime());
   let previousWords: Word[] = [];
   let lastInferredMs = 0;
   let detectedLanguage: string | null = row.language;
-  let lastCommitted: SegmentDTO | null = null;
-  let context = "";
+  let lastCommitted: SegmentDTO | null = recent.at(-1) ?? null;
+  let context = recent
+    .map((segment) => segment.text)
+    .join(" ")
+    .slice(-CONTEXT_CHARS)
+    .trim();
   let stopped = false;
   let lastErrorAt = 0;
   let cooldownUntil = 0;
   let retryAbort: AbortController | null = null;
+  let rotateTimer: ReturnType<typeof setTimeout> | null = null;
   let chain: Promise<void> = Promise.resolve();
 
   const advance = (bytes: number): void => {
@@ -104,6 +126,11 @@ async function runSession(socket: WebSocket, userId: string, transcriptId: strin
   const clearRetryTimer = (): void => {
     retryAbort?.abort();
     retryAbort = null;
+  };
+
+  const clearRotateTimer = (): void => {
+    if (rotateTimer !== null) clearTimeout(rotateTimer);
+    rotateTimer = null;
   };
 
   /**
@@ -303,12 +330,32 @@ async function runSession(socket: WebSocket, userId: string, transcriptId: strin
     if (stopped) return;
     stopped = true;
     clearRetryTimer();
+    clearRotateTimer();
     await flushFinal();
     send({ type: "done" });
     socket.close(1000, "done");
   };
 
+  /**
+   * Vercel closes the socket at the function duration cap. Flush first and ask
+   * the client to reconnect, so the tail is committed instead of dropped.
+   */
+  const rotate = async (): Promise<void> => {
+    if (stopped) return;
+    stopped = true;
+    clearRetryTimer();
+    clearRotateTimer();
+    try {
+      await flushFinal();
+    } finally {
+      send({ type: "rotate" });
+      socket.close(1000, "rotate");
+    }
+  };
+
   send({ type: "ready", transcriptId });
+  rotateTimer = setTimeout(() => void rotate(), env.WS_SESSION_MAX_MS);
+  rotateTimer.unref?.();
 
   socket.on("message", (data: Buffer, isBinary: boolean) => {
     if (stopped) return;
@@ -339,6 +386,7 @@ async function runSession(socket: WebSocket, userId: string, transcriptId: strin
     if (stopped) return;
     stopped = true;
     clearRetryTimer();
+    clearRotateTimer();
     // The socket is gone, so `done` cannot be sent, but the tail is still worth
     // persisting — including when the close happens during a cooldown.
     if (buffer.byteLength > 0) void flushFinal();
@@ -347,5 +395,6 @@ async function runSession(socket: WebSocket, userId: string, transcriptId: strin
   socket.on("error", () => {
     stopped = true;
     clearRetryTimer();
+    clearRotateTimer();
   });
 }

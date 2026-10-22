@@ -11,7 +11,9 @@ import type {
   VerifyEmailInput,
 } from "@stt/shared";
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:3001";
+const API_URL =
+  process.env.NEXT_PUBLIC_API_URL ??
+  (process.env.NODE_ENV === "production" ? "" : "http://localhost:3001");
 
 export class ApiError extends Error {
   constructor(
@@ -27,12 +29,27 @@ export class ApiError extends Error {
 
 type Json = Record<string, unknown>;
 
-async function refreshSession(): Promise<boolean> {
-  const res = await fetch(`${API_URL}/auth/refresh`, {
+let refreshInFlight: Promise<boolean> | null = null;
+
+/**
+ * Shared so a REST retry and a live-socket reconnect cannot rotate the refresh
+ * token twice at the same time (reuse detection revokes the whole family).
+ */
+export function refreshSession(): Promise<boolean> {
+  if (refreshInFlight) return refreshInFlight;
+
+  refreshInFlight = fetch(`${API_URL}/auth/refresh`, {
     method: "POST",
     credentials: "include",
-  });
-  return res.ok;
+    signal: AbortSignal.timeout(10_000),
+  })
+    .then((res) => res.ok)
+    .catch(() => false)
+    .finally(() => {
+      refreshInFlight = null;
+    });
+
+  return refreshInFlight;
 }
 
 export async function apiRequest<T>(

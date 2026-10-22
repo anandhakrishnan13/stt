@@ -28,7 +28,7 @@ export function clearOutbox(): void {
 const PURPOSE_COPY: Record<OtpPurpose, { subject: string; lead: string; action: string }> = {
   verify_email: {
     subject: "Verify your email",
-    lead: "Welcome to Speech to Text. Use this code to finish creating your account:",
+    lead: `Welcome to ${env.APP_NAME}. Use this code to finish creating your account:`,
     action: "verify your email",
   },
   password_change: {
@@ -71,14 +71,14 @@ export async function sendOtpMail(
 ): Promise<void> {
   const copy = PURPOSE_COPY[purpose];
   const body = renderOtp(code, `Hi ${firstName}, ${copy.lead}`, Math.round(env.OTP_TTL_SECONDS / 60));
-  await deliver({ to, subject: `${copy.subject} — Speech to Text`, ...body });
+  await deliver({ to, subject: `${copy.subject} — ${env.APP_NAME}`, ...body });
 }
 
 export async function sendAccountExistsMail(to: string, firstName: string): Promise<void> {
   const text = `Hi ${firstName}, an account already exists for this address. If you forgot your password, use the reset link on the sign-in page.`;
   await deliver({
     to,
-    subject: "Your Speech to Text account",
+    subject: `Your ${env.APP_NAME} account`,
     text,
     html: `<p>${text}</p>`,
   });

@@ -3,6 +3,9 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
     "dev": "bun --watch src/server.ts",
     "start": "bun src/server.ts",
@@ -20,6 +23,7 @@
     "@stt/shared": "workspace:*",
     "drizzle-orm": "^0.44.0",
     "fastify": "^5.4.0",
+    "hash-wasm": "^4.12.0",
     "jose": "^6.0.0",
     "nodemailer": "^7.0.0",
     "postgres": "^3.4.9",

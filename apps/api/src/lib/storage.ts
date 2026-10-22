@@ -1,5 +1,7 @@
+import { createReadStream } from "node:fs";
 import { mkdir, readFile, stat, unlink, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
+import { Readable } from "node:stream";
 import { env } from "../env";
 
 export type AudioObject = {
@@ -73,21 +75,32 @@ class LocalStorage implements StorageDriver {
     const headers: Record<string, string> = { "accept-ranges": "bytes" };
 
     if (!range) {
-      const file = Bun.file(target);
       return {
         status: 200,
-        body: file.stream(),
+        body: Readable.toWeb(createReadStream(target)) as ReadableStream<Uint8Array>,
         headers: { ...headers, "content-length": String(info.size) },
       };
     }
 
-    const blob = Bun.file(target).slice(range.start, range.end + 1);
+    const end = Math.min(range.end, info.size - 1);
+    const length = Math.max(0, end - range.start + 1);
+    const body =
+      length > 0
+        ? (Readable.toWeb(
+            createReadStream(target, { start: range.start, end }),
+          ) as ReadableStream<Uint8Array>)
+        : new ReadableStream<Uint8Array>({
+            start(controller) {
+              controller.close();
+            },
+          });
+
     return {
       status: 206,
-      body: blob.stream(),
+      body,
       headers: {
         ...headers,
-        "content-length": String(blob.size),
+        "content-length": String(length),
         "content-range": `bytes ${range.start}-${range.end}/${info.size}`,
       },
     };

@@ -5,6 +5,7 @@ import { eq } from "drizzle-orm";
 import { buildApp } from "../src/app";
 import { db } from "../src/db";
 import { segments, transcripts, users } from "../src/db/schema";
+import { env } from "../src/env";
 import { ACCESS_COOKIE } from "../src/lib/cookies";
 import { signAccessToken } from "../src/lib/tokens";
 import { resetDb } from "./db";
@@ -19,6 +20,7 @@ const STUB_TEXT = "Hello from the test";
 /** Number of upcoming transcription calls that should answer HTTP 429. */
 let rateLimitResponses = 0;
 const uploadSizes: number[] = [];
+const prompts: string[] = [];
 
 function tone(seconds: number): Uint8Array {
   const samples = Math.round(16_000 * seconds);
@@ -138,6 +140,8 @@ beforeAll(async () => {
     if (body instanceof FormData) {
       const file = body.get("file");
       if (file instanceof Blob) uploadSizes.push(file.size);
+      const prompt = body.get("prompt");
+      if (typeof prompt === "string") prompts.push(prompt);
     }
 
     return Response.json({
@@ -166,6 +170,7 @@ beforeEach(async () => {
   await resetDb();
   rateLimitResponses = 0;
   uploadSizes.length = 0;
+  prompts.length = 0;
   ownerId = randomUUID();
   await db.insert(users).values({
     id: ownerId,
@@ -302,4 +307,54 @@ test("drops a sub-200 ms tail instead of transcribing it", async () => {
     .from(segments)
     .where(eq(segments.transcriptId, transcriptId));
   expect(stored).toHaveLength(0);
+});
+
+test("resumes timestamps and prompt context after a reconnect", async () => {
+  const transcriptId = await createRecording("Recording · 21 Oct, 10:35");
+  await db
+    .update(transcripts)
+    .set({ createdAt: new Date(Date.now() - 10_000) })
+    .where(eq(transcripts.id, transcriptId));
+  await db.insert(segments).values({
+    transcriptId,
+    seq: 0,
+    text: "Earlier words",
+    startMs: 0,
+    endMs: 1_000,
+  });
+
+  const socket = await openSocket(transcriptId);
+  await waitForEvent(socket, "ready");
+
+  const segmentEvent = waitForEvent(socket, "segment");
+  socket.send(tone(2));
+  await segmentEvent;
+
+  const done = waitForEvent(socket, "done");
+  socket.send(JSON.stringify({ type: "stop" }));
+  await done;
+
+  const stored = await db
+    .select()
+    .from(segments)
+    .where(eq(segments.transcriptId, transcriptId))
+    .orderBy(segments.seq);
+  expect(stored).toHaveLength(2);
+  expect(stored[1]?.startMs).toBeGreaterThanOrEqual(9_000);
+  expect(prompts.some((prompt) => prompt.includes("Earlier words"))).toBe(true);
+});
+
+test("rotates the socket before the function duration cap", async () => {
+  const previous = env.WS_SESSION_MAX_MS;
+  (env as { WS_SESSION_MAX_MS: number }).WS_SESSION_MAX_MS = 300;
+  try {
+    const transcriptId = await createRecording("Recording · 21 Oct, 10:36");
+    const socket = await openSocket(transcriptId);
+    await waitForEvent(socket, "ready");
+
+    const rotated = await waitForEvent(socket, "rotate", 5_000);
+    expect(rotated.type).toBe("rotate");
+  } finally {
+    (env as { WS_SESSION_MAX_MS: number }).WS_SESSION_MAX_MS = previous;
+  }
 });

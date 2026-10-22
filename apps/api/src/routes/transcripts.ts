@@ -14,7 +14,6 @@ import { db } from "../db";
 import { segments, transcripts, type TranscriptRow } from "../db/schema";
 import { recordAudit } from "../lib/audit";
 import { requireAuth } from "../lib/auth-guard";
-import { env } from "../env";
 import { errors } from "../lib/errors";
 import { parseBody } from "../lib/http";
 import { appendChunk, discardStaged, readStaged, stagedBytes } from "../lib/recording-store";
@@ -240,25 +239,11 @@ export async function transcriptRoutes(app: FastifyInstance): Promise<void> {
       const row = await findOwnedTranscript(userId, id);
       if (row.status !== "recording") throw errors.stateConflict("Recording is no longer active");
 
-      // Retries of an already-applied chunk are harmless no-ops.
-      if (seq <= row.chunkSeq) return reply.code(204).send();
-      if (seq !== row.chunkSeq + 1) {
-        throw errors.stateConflict(`Expected chunk ${row.chunkSeq + 1}, received ${seq}`);
-      }
-
-      const current = await stagedBytes(id);
-      if (current + body.byteLength > env.MAX_AUDIO_BYTES) {
-        throw errors.payloadTooLarge("Recording exceeded the size limit");
-      }
-
-      const size = await appendChunk(id, body);
-      await db
-        .update(transcripts)
-        .set({ chunkSeq: seq, audioBytes: size, updatedAt: new Date() })
-        .where(eq(transcripts.id, id));
+      const result = await appendChunk(id, seq, body);
+      if (result.duplicate) return reply.code(204).send();
 
       reply.code(202);
-      return { chunkSeq: seq, bytes: size };
+      return { chunkSeq: result.chunkSeq, bytes: result.bytes };
     });
   });
 
@@ -269,6 +254,7 @@ export async function transcriptRoutes(app: FastifyInstance): Promise<void> {
     const row = await findOwnedTranscript(userId, id);
 
     if (row.status === "ready") {
+      await discardStaged(id).catch(() => {});
       const existing: TranscriptResponse = { transcript: toDTO(row) };
       return existing;
     }
@@ -290,9 +276,8 @@ export async function transcriptRoutes(app: FastifyInstance): Promise<void> {
 
     const container = containerFor(row.audioMime ?? "audio/webm");
     const key = `audio/${userId}/${id}.${container.extension}`;
-    const audio = await readStaged(id);
+    const audio = await readStaged(id, row.chunkSeq);
     await storage.put({ key, contentType: container.mime, bytes: audio });
-    await discardStaged(id);
 
     const [updated] = await db
       .update(transcripts)
@@ -305,8 +290,25 @@ export async function transcriptRoutes(app: FastifyInstance): Promise<void> {
         endedAt: new Date(),
         updatedAt: new Date(),
       })
-      .where(eq(transcripts.id, id))
+      .where(and(eq(transcripts.id, id), eq(transcripts.status, "recording")))
       .returning();
+
+    if (!updated) {
+      const [current] = await db
+        .select()
+        .from(transcripts)
+        .where(eq(transcripts.id, id));
+      if (current?.status !== "ready") {
+        throw errors.stateConflict("Recording is not active");
+      }
+      await discardStaged(id).catch(() => {});
+      const existing: TranscriptResponse = { transcript: toDTO(current) };
+      return existing;
+    }
+
+    // The audio is durable now. Staged rows are disposable; a failed delete
+    // must not turn a successful recording into an error.
+    await discardStaged(id).catch(() => {});
 
     await recordAudit({
       action: "recording.finished",

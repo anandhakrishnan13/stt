@@ -7,8 +7,9 @@ export const sqlClient = postgres(env.DATABASE_URL, {
   max: env.DATABASE_POOL_MAX,
   prepare: false,
   ssl: env.DATABASE_SSL ? "require" : false,
-  connect_timeout: 10,
-  idle_timeout: 20,
+  connect_timeout: env.DATABASE_CONNECT_TIMEOUT_SECONDS,
+  idle_timeout: env.DATABASE_IDLE_TIMEOUT_SECONDS,
+  max_lifetime: env.DATABASE_MAX_LIFETIME_SECONDS,
   onnotice: () => {},
 });
 

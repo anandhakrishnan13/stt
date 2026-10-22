@@ -1,4 +1,5 @@
 import { createHash, createHmac, randomBytes, randomInt, timingSafeEqual } from "node:crypto";
+import { argon2id, argon2Verify } from "hash-wasm";
 import { env } from "../env";
 
 export function generateOtp(): string {
@@ -24,15 +25,28 @@ export function safeEqualHex(left: string, right: string): boolean {
   return timingSafeEqual(a, b);
 }
 
-const ARGON2_OPTIONS = { algorithm: "argon2id", memoryCost: 19_456, timeCost: 2 } as const;
+/** Defaults match Bun.password so existing hashes stay valid. */
+function argon2Options() {
+  return {
+    parallelism: env.ARGON2_PARALLELISM,
+    iterations: env.ARGON2_ITERATIONS,
+    memorySize: env.ARGON2_MEMORY_KIB,
+    hashLength: env.ARGON2_HASH_LENGTH,
+  };
+}
 
 export function hashPassword(password: string): Promise<string> {
-  return Bun.password.hash(password, ARGON2_OPTIONS);
+  return argon2id({
+    password,
+    salt: randomBytes(16),
+    ...argon2Options(),
+    outputType: "encoded",
+  });
 }
 
 export async function verifyPassword(password: string, hash: string): Promise<boolean> {
   try {
-    return await Bun.password.verify(password, hash);
+    return await argon2Verify({ password, hash });
   } catch {
     return false;
   }
