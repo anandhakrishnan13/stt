@@ -16,6 +16,9 @@ let cookie: string;
 const originalFetch = globalThis.fetch;
 
 const STUB_TEXT = "Hello from the test";
+/** Number of upcoming transcription calls that should answer HTTP 429. */
+let rateLimitResponses = 0;
+const uploadSizes: number[] = [];
 
 function tone(seconds: number): Uint8Array {
   const samples = Math.round(16_000 * seconds);
@@ -65,6 +68,15 @@ function openSocket(transcriptId: string): Promise<WebSocket> {
   });
 }
 
+/** Reads the text of a `segment` stream event, validating the shape. */
+function segmentText(event: Record<string, unknown>): string {
+  const segment = event.segment;
+  if (typeof segment !== "object" || segment === null || !("text" in segment)) {
+    throw new Error("event carried no segment text");
+  }
+  return String(segment.text);
+}
+
 async function createRecording(title: string): Promise<string> {
   const id = randomUUID();
   await db.insert(transcripts).values({
@@ -74,6 +86,32 @@ async function createRecording(title: string): Promise<string> {
     status: "recording",
   });
   return id;
+}
+
+/** Resolves once `count` events of `type` have arrived on the socket. */
+function countEvents(
+  socket: WebSocket,
+  type: string,
+  count: number,
+  timeoutMs = 8_000,
+): Promise<void> {
+  const { promise, resolve, reject } = Promise.withResolvers<void>();
+  let seen = 0;
+  const timer = setTimeout(() => {
+    socket.removeEventListener("message", onMessage);
+    reject(new Error(`timed out waiting for ${count} ${type} events`));
+  }, timeoutMs);
+  const onMessage = (event: MessageEvent) => {
+    const data = JSON.parse(String(event.data)) as Record<string, unknown>;
+    if (data.type !== type) return;
+    seen += 1;
+    if (seen < count) return;
+    clearTimeout(timer);
+    socket.removeEventListener("message", onMessage);
+    resolve();
+  };
+  socket.addEventListener("message", onMessage);
+  return promise;
 }
 
 beforeAll(async () => {
@@ -87,6 +125,21 @@ beforeAll(async () => {
     const url =
       typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
     if (!url.endsWith("/audio/transcriptions")) return originalFetch(input, init);
+
+    if (rateLimitResponses > 0) {
+      rateLimitResponses -= 1;
+      return new Response("rate limited", {
+        status: 429,
+        headers: { "retry-after": "1" },
+      });
+    }
+
+    const body = init?.body;
+    if (body instanceof FormData) {
+      const file = body.get("file");
+      if (file instanceof Blob) uploadSizes.push(file.size);
+    }
+
     return Response.json({
       text: STUB_TEXT,
       language: "english",
@@ -111,6 +164,8 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await resetDb();
+  rateLimitResponses = 0;
+  uploadSizes.length = 0;
   ownerId = randomUUID();
   await db.insert(users).values({
     id: ownerId,
@@ -132,9 +187,11 @@ test("streams Groq segments, sets the engine, and derives the title", async () =
   await ready;
 
   const segmentEvent = waitForEvent(socket, "segment");
-  socket.send(tone(6.2));
+  // One full window (STT_MAX_WINDOW_MS = 2000 in tests): the pass is forced and
+  // the whole window commits before the user stops.
+  socket.send(tone(2));
   const event = await segmentEvent;
-  expect((event.segment as { text: string }).text).toBe(STUB_TEXT);
+  expect(segmentText(event)).toBe(STUB_TEXT);
 
   const done = waitForEvent(socket, "done");
   socket.send(JSON.stringify({ type: "stop" }));
@@ -164,7 +221,7 @@ test("flushes the final partial window on stop", async () => {
   socket.send(JSON.stringify({ type: "stop" }));
 
   const event = await segmentEvent;
-  expect((event.segment as { text: string }).text).toBe(STUB_TEXT);
+  expect(segmentText(event)).toBe(STUB_TEXT);
   await waitForEvent(socket, "done");
 
   const stored = await db
@@ -172,4 +229,77 @@ test("flushes the final partial window on stop", async () => {
     .from(segments)
     .where(eq(segments.transcriptId, transcriptId));
   expect(stored.map((item) => item.text)).toEqual([STUB_TEXT]);
+});
+
+test("clips every transcription request to the max window", async () => {
+  const transcriptId = await createRecording("Recording · 21 Oct, 10:32");
+  const socket = await openSocket(transcriptId);
+  await waitForEvent(socket, "ready");
+
+  // Five seconds is more than one window, so the buffer must be drained in
+  // clipped windows instead of being resent whole on every pass.
+  const twoSegments = countEvents(socket, "segment", 2);
+  socket.send(tone(5));
+  await twoSegments;
+
+  const done = waitForEvent(socket, "done");
+  socket.send(JSON.stringify({ type: "stop" }));
+  await done;
+
+  const windowBytes = 44 + 2_000 * 32; // WAV header + STT_MAX_WINDOW_MS of PCM
+  expect(uploadSizes[0]).toBe(windowBytes);
+  expect(uploadSizes.length).toBeGreaterThanOrEqual(2);
+  for (const size of uploadSizes) expect(size).toBeLessThanOrEqual(windowBytes);
+});
+
+test("persists the final tail after a rate-limit cooldown", async () => {
+  rateLimitResponses = 1;
+  const transcriptId = await createRecording("Recording · 21 Oct, 10:33");
+  const socket = await openSocket(transcriptId);
+  await waitForEvent(socket, "ready");
+
+  const errorEvent = waitForEvent(socket, "error");
+  const segmentEvent = waitForEvent(socket, "segment", 10_000);
+  const doneEvent = waitForEvent(socket, "done", 10_000);
+
+  socket.send(tone(0.8));
+  socket.send(JSON.stringify({ type: "stop" }));
+
+  const error = await errorEvent;
+  expect(String(error.message)).toContain("rate limited");
+
+  const segment = await segmentEvent;
+  expect(segmentText(segment)).toBe(STUB_TEXT);
+  await doneEvent;
+
+  const [row] = await db
+    .select()
+    .from(transcripts)
+    .where(eq(transcripts.id, transcriptId));
+  expect(row?.engine).toBe("groq-whisper");
+  expect(row?.title).toBe(STUB_TEXT);
+
+  const stored = await db
+    .select()
+    .from(segments)
+    .where(eq(segments.transcriptId, transcriptId));
+  expect(stored.map((item) => item.text)).toEqual([STUB_TEXT]);
+});
+
+test("drops a sub-200 ms tail instead of transcribing it", async () => {
+  const transcriptId = await createRecording("Recording · 21 Oct, 10:34");
+  const socket = await openSocket(transcriptId);
+  await waitForEvent(socket, "ready");
+
+  const done = waitForEvent(socket, "done");
+  socket.send(tone(0.1));
+  socket.send(JSON.stringify({ type: "stop" }));
+  await done;
+
+  expect(uploadSizes).toHaveLength(0);
+  const stored = await db
+    .select()
+    .from(segments)
+    .where(eq(segments.transcriptId, transcriptId));
+  expect(stored).toHaveLength(0);
 });

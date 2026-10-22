@@ -30,10 +30,17 @@ docs/superpowers/specs  Design spec for this slice
 bun install
 bun run setup          # writes apps/api/.env + apps/web/.env.local (generated secrets)
 bun run services:up    # PostgreSQL + Mailpit (OTP inbox at http://localhost:8025)
+# Add a Groq API key to apps/api/.env before anything imports the API config:
+#   GROQ_API_KEY=gsk_...        (create one at https://console.groq.com/keys)
 bun run db:migrate     # apply Drizzle migrations to local Postgres
 bun run dev:api        # http://localhost:3001
 bun run dev:web        # http://localhost:3000
 ```
+
+The API validates its environment at import, so `db:migrate` and `dev:api` fail until
+`GROQ_API_KEY` is set. The key is **server-only**: it lives in `apps/api/.env`, is read only by the
+API process, and must never be exposed as a `NEXT_PUBLIC_*` variable. To run without Groq, point
+`STT_PROVIDER=whisper` at a local Whisper server instead.
 
 Sign up at http://localhost:3000/signup, then read the 6-digit code in Mailpit.
 

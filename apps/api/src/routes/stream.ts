@@ -1,6 +1,7 @@
 import type { SegmentDTO, StreamCommand, StreamEvent } from "@stt/shared";
 import { eq, max, sql } from "drizzle-orm";
 import type { FastifyInstance } from "fastify";
+import { setTimeout as delay } from "node:timers/promises";
 import type { WebSocket } from "ws";
 import { db } from "../db";
 import { segments, transcripts } from "../db/schema";
@@ -15,6 +16,11 @@ const SAMPLES_PER_MS = 16;
 const CONTEXT_CHARS = 200;
 const MAX_BUFFER_MS = 60_000;
 const ERROR_COOLDOWN_MS = 5_000;
+/** Whisper hallucinates on near-empty audio, so the final pass needs a floor. */
+const FINAL_MIN_WINDOW_MS = 200;
+/** Longest a stop request waits for a rate-limit cooldown before giving up. */
+const MAX_FINAL_COOLDOWN_WAIT_MS = 10_000;
+const RETRY_TIMER_SLACK_MS = 50;
 
 function durationOf(bytes: Buffer): number {
   return bytes.byteLength / 2 / SAMPLES_PER_MS;
@@ -86,12 +92,28 @@ async function runSession(socket: WebSocket, userId: string, transcriptId: strin
   let stopped = false;
   let lastErrorAt = 0;
   let cooldownUntil = 0;
+  let retryAbort: AbortController | null = null;
   let chain: Promise<void> = Promise.resolve();
 
   const advance = (bytes: number): void => {
     const trimmed = Math.min(bytes, buffer.byteLength);
     buffer = buffer.subarray(trimmed);
     bufferStartMs += trimmed / 2 / SAMPLES_PER_MS;
+  };
+
+  const clearRetryTimer = (): void => {
+    retryAbort?.abort();
+    retryAbort = null;
+  };
+
+  /**
+   * Waits out an active rate-limit cooldown (bounded) so a final pass is not
+   * dropped just because the user stopped while the engine was throttled.
+   */
+  const waitForCooldown = async (): Promise<void> => {
+    const remaining = cooldownUntil - Date.now();
+    if (remaining <= 0) return;
+    await delay(Math.min(remaining, MAX_FINAL_COOLDOWN_WAIT_MS));
   };
 
   const reportError = (message: string): void => {
@@ -170,15 +192,20 @@ async function runSession(socket: WebSocket, userId: string, transcriptId: strin
   };
 
   const runPass = async (final: boolean): Promise<void> => {
-    if (Date.now() < cooldownUntil) return;
+    if (!final && Date.now() < cooldownUntil) return;
     const availableMs = durationOf(buffer);
-    if (final ? availableMs <= 0 : availableMs < env.STT_MIN_WINDOW_MS) return;
+    if (availableMs < (final ? FINAL_MIN_WINDOW_MS : env.STT_MIN_WINDOW_MS)) return;
     if (!final && availableMs - lastInferredMs < env.STT_STEP_MS) return;
 
-    const snapshot = buffer;
+    const windowMs = Math.min(availableMs, env.STT_MAX_WINDOW_MS);
+    const snapshotBytes = Math.min(
+      buffer.byteLength,
+      Math.round(windowMs * SAMPLES_PER_MS) * 2,
+    );
+    const snapshot = buffer.subarray(0, snapshotBytes);
     const snapshotStartMs = bufferStartMs;
-    const snapshotMs = availableMs;
-    lastInferredMs = availableMs;
+    const snapshotMs = durationOf(snapshot);
+    lastInferredMs = snapshotMs;
 
     if (pcm16Rms(snapshot) < env.STT_SILENCE_RMS) {
       if (snapshotMs >= env.STT_MAX_WINDOW_MS) {
@@ -224,7 +251,21 @@ async function runSession(socket: WebSocket, userId: string, transcriptId: strin
         reportError(
           `Transcription is rate limited; retrying in ${Math.ceil(error.retryAfterMs / 1000)}s.`,
         );
-        setTimeout(() => kick(), error.retryAfterMs + 50);
+        // A stop/close clears this timer, so a closed socket never keeps it alive.
+        if (stopped) return;
+        clearRetryTimer();
+        const controller = new AbortController();
+        retryAbort = controller;
+        void delay(error.retryAfterMs + RETRY_TIMER_SLACK_MS, undefined, {
+          signal: controller.signal,
+        })
+          .then(() => {
+            retryAbort = null;
+            kick();
+          })
+          .catch(() => {
+            /* cancelled by stop/close */
+          });
         return;
       }
       reportError("Transcription engine did not answer; retrying");
@@ -234,6 +275,18 @@ async function runSession(socket: WebSocket, userId: string, transcriptId: strin
   const schedule = (final: boolean): Promise<void> => {
     chain = chain.then(() => runPass(final));
     return chain;
+  };
+
+  /**
+   * Flushes the tail before the socket goes away: waits out a rate-limit
+   * cooldown and retries once, so stopping mid-cooldown still persists audio.
+   */
+  const flushFinal = async (): Promise<void> => {
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      await waitForCooldown();
+      await schedule(true);
+      if (Date.now() >= cooldownUntil) break;
+    }
   };
 
   /** Keeps working through buffered audio without waiting for the next frame. */
@@ -249,7 +302,8 @@ async function runSession(socket: WebSocket, userId: string, transcriptId: strin
   const finish = async (): Promise<void> => {
     if (stopped) return;
     stopped = true;
-    await schedule(true);
+    clearRetryTimer();
+    await flushFinal();
     send({ type: "done" });
     socket.close(1000, "done");
   };
@@ -282,13 +336,16 @@ async function runSession(socket: WebSocket, userId: string, transcriptId: strin
   });
 
   socket.on("close", () => {
-    if (!stopped) {
-      stopped = true;
-      if (buffer.byteLength > 0) void schedule(true);
-    }
+    if (stopped) return;
+    stopped = true;
+    clearRetryTimer();
+    // The socket is gone, so `done` cannot be sent, but the tail is still worth
+    // persisting — including when the close happens during a cooldown.
+    if (buffer.byteLength > 0) void flushFinal();
   });
 
   socket.on("error", () => {
     stopped = true;
+    clearRetryTimer();
   });
 }

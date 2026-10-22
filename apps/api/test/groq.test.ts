@@ -30,17 +30,23 @@ const server = Bun.serve({
       });
     }
 
-    const form = await request.formData();
+    const raw = Buffer.from(await request.arrayBuffer());
+    // `request.formData()` relabels audio/wav as the audio/x-wav alias, so the
+    // asserted content type comes from the raw multipart part header.
+    const form = await new Response(raw, { headers: request.headers }).formData();
     const file = form.get("file");
     if (!(file instanceof File)) throw new Error("missing file");
     const bytes = new Uint8Array(await file.arrayBuffer());
+    const partHeader = /name="file"; filename="[^"]*"\r\nContent-Type: ([^\r\n]+)/.exec(
+      raw.toString("latin1"),
+    );
     captured.push({
       model: form.get("model")?.toString() ?? null,
       responseFormat: form.get("response_format")?.toString() ?? null,
       temperature: form.get("temperature")?.toString() ?? null,
       timestampGranularity: form.get("timestamp_granularities[]")?.toString() ?? null,
       fileName: file.name,
-      fileType: file.type,
+      fileType: partHeader?.[1] ?? null,
       wavStartsWithRiff:
         bytes[0] === 0x52 &&
         bytes[1] === 0x49 &&
@@ -126,9 +132,9 @@ test("transcribes PCM through Groq with word timestamps", async () => {
   expect(request?.temperature).toBe("0");
   expect(request?.timestampGranularity).toBe("word");
   expect(request?.fileName).toBe("window.wav");
-  // Bun's multipart serializer normalizes audio/wav to the registered
-  // audio/x-wav alias; both are valid WAV uploads.
-  expect(request?.fileType).toBe("audio/x-wav");
+  // Read from the raw multipart part header: `request.formData()` reports the
+  // registered alias audio/x-wav even though the part is serialized as audio/wav.
+  expect(request?.fileType).toBe("audio/wav");
   expect(request?.wavStartsWithRiff).toBe(true);
 });
 
