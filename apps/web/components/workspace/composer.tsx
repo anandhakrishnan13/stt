@@ -112,7 +112,7 @@ export function Composer() {
             : "border-slate-200 dark:border-slate-800",
         )}
       >
-        {lines.length > 0 ? (
+        {lines.length > 0 || interim ? (
           <div
             aria-live="polite"
             aria-label="Live transcript"

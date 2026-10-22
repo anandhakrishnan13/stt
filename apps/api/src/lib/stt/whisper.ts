@@ -1,7 +1,6 @@
 import { env } from "../../env";
 
 export const SAMPLE_RATE = 16_000;
-export const BYTES_PER_MS = (SAMPLE_RATE * 2) / 1_000;
 
 export type Word = { text: string; startMs: number; endMs: number };
 

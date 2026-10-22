@@ -44,7 +44,7 @@ const envSchema = z.object({
   SUPABASE_URL: z.string().default(""),
   SUPABASE_SERVICE_ROLE_KEY: z.string().default(""),
   SUPABASE_BUCKET: z.string().default("transcripts"),
-  MAX_AUDIO_BYTES: z.coerce.number().int().positive().default(64 * 1024 * 1024),
+  MAX_AUDIO_BYTES: z.coerce.number().int().positive().default(10 * 1024 * 1024),
 
   STT_PROVIDER: z.enum(["groq", "whisper"]).default("groq"),
   STT_LANGUAGE: z.string().default(""),

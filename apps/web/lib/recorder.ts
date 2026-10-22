@@ -4,9 +4,9 @@ import { LiveTranscriber } from "@/lib/pcm-stream";
 import { TRANSCRIPTS_CHANGED } from "@/lib/transcripts";
 
 /**
- * MediaRecorder already compresses to Opus (or AAC on Safari), so chunks are
- * uploaded verbatim and assembled by the API. No PCM and no server-side
- * transcoding: one encoder in the browser, one file at rest.
+ * MediaRecorder compresses the archived audio to Opus (or AAC on Safari), so
+ * those chunks are uploaded verbatim. In parallel, the mic graph emits 16 kHz
+ * PCM over a WebSocket for live transcription; the two paths share one stream.
  */
 const MIME_CANDIDATES = [
   "audio/webm;codecs=opus",
@@ -185,14 +185,13 @@ export class VoiceRecorder {
     await this.stopRecorder();
     await this.uploadChain;
     this.releaseStream();
+    await this.live?.stop();
+    this.live = null;
 
     if (this.uploadFailure) {
       await api.abortRecording(this.transcriptId).catch(() => {});
       throw this.uploadFailure;
     }
-
-    await this.live?.stop();
-    this.live = null;
 
     const result = await api.finishRecording(this.transcriptId, durationMs);
     window.dispatchEvent(new Event(TRANSCRIPTS_CHANGED));

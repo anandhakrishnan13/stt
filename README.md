@@ -2,7 +2,7 @@
 
 Multilingual (Hindi/English code-mixed) real-time transcription service.
 
-Stream audio from your browser → six-second PCM windows are sent to Groq-hosted Whisper → interim and final transcripts appear live in the UI → segments are persisted in PostgreSQL alongside the compressed audio in Supabase Storage.
+Stream audio from your browser → six-second PCM windows are sent to Groq-hosted Whisper → segments appear live in the UI → segments are persisted in PostgreSQL alongside the compressed audio in Supabase Storage.
 
 ## Stack
 
@@ -146,7 +146,7 @@ the browser only ever talks to this API, so the service-role key stays server-si
 
 ## Live transcription
 
-The browser streams 16 kHz mono PCM over an authenticated WebSocket. The API buffers six-second windows, sends each as a WAV file to Groq's `whisper-large-v3-turbo`, and uses LocalAgreement (two consecutive hypotheses must agree) to commit stable prefixes. The first committed segment sets the transcript title. Interim text is pushed to the browser for a live typing effect; finalized segments are persisted in PostgreSQL.
+The browser streams 16 kHz mono PCM over an authenticated WebSocket. The API buffers six-second windows, sends each as a WAV file to Groq's `whisper-large-v3-turbo`, and commits the returned words in order; a stop flushes the remaining partial window. The first committed segment sets the transcript title. Finalized segments are persisted in PostgreSQL and pushed to the browser, and leftover hypotheses are sent as interim text.
 
 ## Security decisions
 
@@ -173,7 +173,7 @@ The browser streams 16 kHz mono PCM over an authenticated WebSocket. The API buf
 
 ```bash
 bun run services:up    # start PostgreSQL + Mailpit
-bun test               # 44 integration tests, disposable PostgreSQL database per process
+bun test               # 48 integration tests, disposable PostgreSQL database per process
 ```
 
 Tests create a unique `stt_test_<pid>_<random>` database, run migrations, exercise the feature, and drop the database on teardown. No shared state between test processes.
