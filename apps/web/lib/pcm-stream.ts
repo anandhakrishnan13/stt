@@ -54,6 +54,8 @@ export class LiveTranscriber {
   private rotateRequested = false;
   private reportedDisconnect = false;
   private lastRefreshAt = Date.now();
+  private pendingFrames: ArrayBuffer[] = [];
+  private pendingBytes = 0;
 
   private constructor(
     context: AudioContext,
@@ -75,8 +77,7 @@ export class LiveTranscriber {
     this.resolveDone = done.resolve;
 
     node.port.onmessage = (event: MessageEvent<ArrayBuffer>) => {
-      const socket = this.socket;
-      if (socket?.readyState === WebSocket.OPEN) socket.send(event.data);
+      this.sendOrQueue(event.data);
     };
   }
 
@@ -110,6 +111,9 @@ export class LiveTranscriber {
       callbacks,
     );
 
+    // Start capturing immediately; frames queue while the socket connects.
+    await context.resume().catch(() => {});
+
     try {
       await transcriber.connect();
     } catch (error) {
@@ -117,8 +121,36 @@ export class LiveTranscriber {
       throw error;
     }
 
-    await context.resume().catch(() => {});
     return transcriber;
+  }
+
+  /** Keep the first seconds of speech while the socket is cold-starting. */
+  private sendOrQueue(frame: ArrayBuffer): void {
+    if (this.closed || this.stopping) return;
+
+    const socket = this.socket;
+    if (socket?.readyState === WebSocket.OPEN) {
+      socket.send(frame);
+      return;
+    }
+
+    this.pendingFrames.push(frame);
+    this.pendingBytes += frame.byteLength;
+
+    const maxPendingBytes = 10 * 16_000 * 2;
+    while (this.pendingBytes > maxPendingBytes && this.pendingFrames.length > 0) {
+      const dropped = this.pendingFrames.shift();
+      if (dropped) this.pendingBytes -= dropped.byteLength;
+    }
+  }
+
+  private flushPending(): void {
+    const socket = this.socket;
+    if (socket?.readyState !== WebSocket.OPEN) return;
+
+    for (const frame of this.pendingFrames) socket.send(frame);
+    this.pendingFrames = [];
+    this.pendingBytes = 0;
   }
 
   private connect(): Promise<void> {
@@ -165,6 +197,7 @@ export class LiveTranscriber {
       case "ready":
         this.attempt = 0;
         this.reportedDisconnect = false;
+        this.flushPending();
         break;
       case "segment":
         this.callbacks.onSegment(payload.segment);
@@ -261,6 +294,8 @@ export class LiveTranscriber {
     this.stopping = true;
     this.clearRetry();
     this.node.port.onmessage = null;
+    this.pendingFrames = [];
+    this.pendingBytes = 0;
 
     const socket = this.socket;
     if (socket?.readyState === WebSocket.OPEN) {
@@ -285,12 +320,16 @@ export class LiveTranscriber {
     this.stopping = true;
     this.clearRetry();
     this.node.port.onmessage = null;
+    this.pendingFrames = [];
+    this.pendingBytes = 0;
     this.resolveDone();
     this.disconnect();
   }
 
   private disconnect(): void {
     this.clearRetry();
+    this.pendingFrames = [];
+    this.pendingBytes = 0;
     const socket = this.socket;
     this.socket = null;
     if (
