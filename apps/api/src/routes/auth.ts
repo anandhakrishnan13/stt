@@ -58,9 +58,18 @@ async function startSession(
 }
 
 function isUniqueViolation(error: unknown): boolean {
-  if (typeof error !== "object" || error === null || !("code" in error)) return false;
-  // PostgreSQL unique_violation. postgres.js surfaces the SQLSTATE as `code`.
-  return error.code === "23505";
+  if (typeof error !== "object" || error === null) return false;
+  if ("code" in error && error.code === "23505") return true;
+  // drizzle wraps query failures in DrizzleQueryError; postgres.js keeps the
+  // SQLSTATE on the PostgresError, which arrives as `cause`.
+  if (!("cause" in error)) return false;
+  const cause = error.cause;
+  return (
+    typeof cause === "object" &&
+    cause !== null &&
+    "code" in cause &&
+    cause.code === "23505"
+  );
 }
 
 export async function authRoutes(app: FastifyInstance): Promise<void> {

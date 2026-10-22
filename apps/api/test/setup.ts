@@ -57,7 +57,14 @@ process.env.DATABASE_SSL = "false";
 // read process.env must be imported dynamically afterwards (this file is a
 // bun test preload whose whole purpose is ordering env setup before app code).
 const { runMigrations } = await import("../src/db/migrate");
-await runMigrations();
+try {
+  await runMigrations();
+} catch (error) {
+  // A migration failure must not leak the freshly created database.
+  await admin.unsafe(`DROP DATABASE IF EXISTS "${database}" WITH (FORCE)`);
+  await admin.end({ timeout: 5 });
+  throw error;
+}
 
 afterAll(async () => {
   const { closeDb } = await import("../src/db");

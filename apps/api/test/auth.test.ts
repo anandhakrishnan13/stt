@@ -144,6 +144,33 @@ describe("signup and email verification", () => {
     expect(correctAfter.json().error.code).toBe("OTP_ATTEMPTS_EXCEEDED");
   });
 
+  test("answers concurrent signups identically without surfacing a 500", async () => {
+    const email = "race@example.com";
+
+    // Both requests pass the existence pre-check before either insert lands,
+    // so the loser hits PostgreSQL's unique_violation and must still see 202.
+    const [first, second] = await Promise.all([
+      app.inject({
+        method: "POST",
+        url: "/auth/signup",
+        payload: { email, password: PASSWORD, firstName: "Asha", lastName: "Rao" },
+      }),
+      app.inject({
+        method: "POST",
+        url: "/auth/signup",
+        payload: { email, password: PASSWORD, firstName: "Asha", lastName: "Rao" },
+      }),
+    ]);
+
+    expect(first.statusCode).toBe(202);
+    expect(second.statusCode).toBe(202);
+    expect(first.json()).toEqual({ status: "pending_verification" });
+    expect(second.json()).toEqual({ status: "pending_verification" });
+
+    const rows = await db.select().from(users).where(eq(users.email, email));
+    expect(rows.length).toBe(1);
+  });
+
   test("does not reveal that an email already exists", async () => {
     const email = "dup@example.com";
     await signup(email);
