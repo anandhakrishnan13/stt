@@ -110,6 +110,22 @@ if (parsed.data.STT_PROVIDER === "groq" && !parsed.data.GROQ_API_KEY) {
 
 export const env = parsed.data;
 
-export const corsOrigins = env.CORS_ORIGINS.split(",")
-  .map((origin) => origin.trim())
-  .filter(Boolean);
+export function corsOrigins(): string[] {
+  const configured = env.CORS_ORIGINS.split(",")
+    .map((origin) => origin.trim())
+    .filter(Boolean);
+  const vercelHosts = [
+    process.env.VERCEL_URL,
+    process.env.VERCEL_BRANCH_URL,
+    process.env.VERCEL_PROJECT_PRODUCTION_URL,
+  ].filter((host): host is string => Boolean(host));
+
+  return [
+    ...new Set([
+      ...configured,
+      ...vercelHosts.map((host) =>
+        host.startsWith("http://") || host.startsWith("https://") ? host : `https://${host}`,
+      ),
+    ]),
+  ];
+}

@@ -26,6 +26,7 @@ export function buildApp(options: { logger?: boolean } = {}): FastifyInstance {
     logger: options.logger ?? false,
     trustProxy: true,
   });
+  const allowedOrigins = corsOrigins();
 
   app.register(helmet, { contentSecurityPolicy: false });
   app.register(websocket, {
@@ -34,7 +35,7 @@ export function buildApp(options: { logger?: boolean } = {}): FastifyInstance {
   app.register(cookie);
   app.register(cors, {
     origin: (origin, callback) => {
-      if (!origin || corsOrigins.includes(origin)) {
+      if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
         return;
       }
@@ -69,7 +70,7 @@ export function buildApp(options: { logger?: boolean } = {}): FastifyInstance {
   app.addHook("onRequest", async (request) => {
     if (request.method === "GET" || request.method === "HEAD" || request.method === "OPTIONS") return;
     const origin = request.headers.origin;
-    if (origin && !corsOrigins.includes(origin)) throw errors.csrf();
+    if (origin && !allowedOrigins.includes(origin)) throw errors.csrf();
   });
 
   app.setErrorHandler((error, request, reply) => {
