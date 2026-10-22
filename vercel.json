@@ -4,7 +4,8 @@
       "root": "apps/web/"
     },
     "api": {
-      "root": "apps/api/"
+      "root": "apps/api/",
+      "entrypoint": "src/server.ts"
     }
   },
   "rewrites": [

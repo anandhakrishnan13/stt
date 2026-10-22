@@ -21,18 +21,18 @@ function httpStatus(error: unknown): number {
   return 500;
 }
 
-export async function buildApp(options: { logger?: boolean } = {}): Promise<FastifyInstance> {
+export function buildApp(options: { logger?: boolean } = {}): FastifyInstance {
   const app = Fastify({
     logger: options.logger ?? false,
     trustProxy: true,
   });
 
-  await app.register(helmet, { contentSecurityPolicy: false });
-  await app.register(websocket, {
+  app.register(helmet, { contentSecurityPolicy: false });
+  app.register(websocket, {
     options: { maxPayload: 1024 * 1024 },
   });
-  await app.register(cookie);
-  await app.register(cors, {
+  app.register(cookie);
+  app.register(cors, {
     origin: (origin, callback) => {
       if (!origin || corsOrigins.includes(origin)) {
         callback(null, true);
@@ -44,7 +44,7 @@ export async function buildApp(options: { logger?: boolean } = {}): Promise<Fast
     methods: ["GET", "HEAD", "POST", "PATCH", "DELETE", "OPTIONS"],
     exposedHeaders: ["Content-Range", "Accept-Ranges", "Content-Length"],
   });
-  await app.register(rateLimit, {
+  app.register(rateLimit, {
     global: true,
     max: limits.global.max,
     timeWindow: limits.global.timeWindow,
@@ -112,10 +112,10 @@ export async function buildApp(options: { logger?: boolean } = {}): Promise<Fast
 
   app.get("/health", async () => ({ ok: true }));
 
-  await app.register(authRoutes, { prefix: "/auth" });
-  await app.register(passwordRoutes, { prefix: "/auth" });
-  await app.register(transcriptRoutes, { prefix: "/transcripts" });
-  await app.register(streamRoutes, { prefix: "/transcripts" });
+  app.register(authRoutes, { prefix: "/auth" });
+  app.register(passwordRoutes, { prefix: "/auth" });
+  app.register(transcriptRoutes, { prefix: "/transcripts" });
+  app.register(streamRoutes, { prefix: "/transcripts" });
 
   return app;
 }

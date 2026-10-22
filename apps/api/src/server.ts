@@ -2,7 +2,7 @@ import { buildApp } from "./app";
 import { closeDb } from "./db";
 import { env } from "./env";
 
-const app = await buildApp({ logger: true });
+const app = buildApp({ logger: true });
 
 for (const signal of ["SIGINT", "SIGTERM"] as const) {
   process.on(signal, async () => {
@@ -12,4 +12,7 @@ for (const signal of ["SIGINT", "SIGTERM"] as const) {
   });
 }
 
-await app.listen({ port: env.PORT, host: "0.0.0.0" });
+app.listen({ port: env.PORT, host: "0.0.0.0" }).catch((error) => {
+  app.log.error(error);
+  process.exit(1);
+});

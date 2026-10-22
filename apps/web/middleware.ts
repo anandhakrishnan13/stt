@@ -22,6 +22,7 @@ export function middleware(request: NextRequest) {
 }
 
 export const config = {
+  runtime: "nodejs",
   matcher: [
     "/",
     "/t/:path*",
