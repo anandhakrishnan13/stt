@@ -115,6 +115,12 @@ if (parsed.data.STT_PROVIDER === "gemini" && !parsed.data.GEMINI_API_KEY) {
 
 export const env = parsed.data;
 
+export function geminiApiKeys(): string[] {
+  return env.GEMINI_API_KEY.split(",")
+    .map((k) => k.trim())
+    .filter(Boolean);
+}
+
 export function corsOrigins(): string[] {
   const configured = env.CORS_ORIGINS.split(",")
     .map((origin) => origin.trim())

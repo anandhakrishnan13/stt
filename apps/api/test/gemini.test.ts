@@ -45,7 +45,33 @@ test("transcribeGemini sends base64 WAV inlineData and parses response", async (
   }
 });
 
-test("transcribeGemini throws SttRateLimitError on 429", async () => {
+test("transcribeGemini fails over to next key on 429", async () => {
+  const originalFetch = globalThis.fetch;
+  const attemptedKeys: string[] = [];
+
+  globalThis.fetch = (async (url: string) => {
+    const key = new URL(url).searchParams.get("key") ?? "";
+    attemptedKeys.push(key);
+    if (attemptedKeys.length === 1) {
+      return new Response("rate limited", { status: 429, headers: { "retry-after": "5" } });
+    }
+    return Response.json({
+      candidates: [{ content: { parts: [{ text: "Success on failover" }] } }],
+    });
+  }) as unknown as typeof fetch;
+
+  try {
+    const pcm = new Uint8Array(16_000 * 2);
+    const res = await transcribeGemini(pcm);
+    expect(res.text).toBe("Success on failover");
+    expect(attemptedKeys.length).toBe(2);
+    expect(attemptedKeys[0]).not.toBe(attemptedKeys[1]);
+  } finally {
+    globalThis.fetch = originalFetch;
+  }
+});
+
+test("transcribeGemini throws SttRateLimitError when all keys are throttled", async () => {
   const originalFetch = globalThis.fetch;
   globalThis.fetch = (async () => {
     return new Response("rate limited", {

@@ -29,6 +29,7 @@ process.env.STORAGE_DIR = `/tmp/stt-test-storage-${process.pid}`;
 
 process.env.STT_PROVIDER = "groq";
 process.env.GROQ_API_KEY = "test-groq-key";
+process.env.GEMINI_API_KEY = "test-key-1,test-key-2,test-key-3";
 process.env.STT_STEP_MS = "2000";
 process.env.STT_MAX_WINDOW_MS = "2000";
 process.env.STT_MIN_WINDOW_MS = "500";
