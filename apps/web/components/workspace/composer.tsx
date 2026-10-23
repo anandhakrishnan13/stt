@@ -22,7 +22,13 @@ export function Composer() {
   const [interim, setInterim] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const recorderRef = useRef<VoiceRecorder | null>(null);
+  const transcriptRef = useRef<HTMLDivElement | null>(null);
 
+  useEffect(() => {
+    if (transcriptRef.current) {
+      transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight;
+    }
+  }, [lines, interim]);
   useEffect(() => {
     if (state.phase !== "recording") return;
     setElapsedMs(0);
@@ -114,9 +120,10 @@ export function Composer() {
       >
         {lines.length > 0 || interim ? (
           <div
+            ref={transcriptRef}
             aria-live="polite"
             aria-label="Live transcript"
-            className="max-h-40 space-y-1 overflow-y-auto px-3 pb-2 pt-1 text-sm"
+            className="max-h-40 space-y-1 overflow-y-auto px-3 pb-2 pt-1 text-sm scroll-smooth"
           >
             {lines.map((line) => (
               <p key={line.id} className="text-slate-800 dark:text-slate-200">

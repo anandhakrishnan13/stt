@@ -235,7 +235,13 @@ async function runSession(socket: WebSocket, userId: string, transcriptId: strin
     lastInferredMs = snapshotMs;
 
     if (pcm16Rms(snapshot) < env.STT_SILENCE_RMS) {
-      if (snapshotMs >= env.STT_MAX_WINDOW_MS) {
+      if (previousWords.length > 0) {
+        await commit(previousWords, snapshotStartMs);
+        advance(snapshot.byteLength);
+        previousWords = [];
+        lastInferredMs = 0;
+        send({ type: "interim", text: "" });
+      } else if (snapshotMs >= env.STT_MAX_WINDOW_MS) {
         advance(snapshot.byteLength);
         previousWords = [];
         lastInferredMs = 0;
