@@ -1,5 +1,10 @@
 import { describe, expect, test } from "bun:test";
 import { commonPrefix, joinWords } from "../src/lib/stt/agreement";
+import {
+  composeSttPrompt,
+  composeWhisperPrompt,
+  GEMINI_STT_INSTRUCTION,
+} from "../src/lib/stt/prompt";
 import { cleanTranscript, pcm16Rms, pcm16ToWav, type Word } from "../src/lib/stt/whisper";
 
 function word(text: string, startMs: number, endMs: number): Word {
@@ -60,5 +65,26 @@ describe("speech helpers", () => {
   test("drops non-speech annotations from engine output", () => {
     expect(cleanTranscript("  [BLANK_AUDIO] (music) *cough*  Namaste  ")).toBe("Namaste");
     expect(cleanTranscript("\n\n  ")).toBe("");
+  });
+});
+
+describe("stt prompts", () => {
+  test("instructions survive prior-transcript context", () => {
+    const prompt = composeSttPrompt(GEMINI_STT_INSTRUCTION, "kal mujhe meeting hai");
+    expect(prompt.startsWith(GEMINI_STT_INSTRUCTION)).toBe(true);
+    expect(prompt).toContain("Previous transcript:\nkal mujhe meeting hai");
+    expect(prompt).toContain("Roman script");
+  });
+
+  test("omits the context section when there is no usable context", () => {
+    expect(composeSttPrompt(GEMINI_STT_INSTRUCTION)).toBe(GEMINI_STT_INSTRUCTION);
+    expect(composeSttPrompt(GEMINI_STT_INSTRUCTION, "   ")).toBe(GEMINI_STT_INSTRUCTION);
+  });
+
+  test("whisper prompt keeps the style hint without chat labels", () => {
+    expect(composeWhisperPrompt("kal mujhe meeting hai", "yaar ye report accha hai")).toBe(
+      "kal mujhe meeting hai yaar ye report accha hai",
+    );
+    expect(composeWhisperPrompt("kal mujhe meeting hai", "")).toBe("kal mujhe meeting hai");
   });
 });

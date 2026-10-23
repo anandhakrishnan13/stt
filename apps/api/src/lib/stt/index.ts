@@ -10,10 +10,10 @@ export type SttEngine = "whisper" | "gemini";
 
 export function transcribePcm(
   pcm: Uint8Array,
-  prompt?: string,
+  context?: string,
   engine?: SttEngine | "groq",
 ): Promise<Transcription> {
   const selected = engine ?? env.STT_PROVIDER;
-  if (selected === "gemini") return transcribeGemini(pcm, prompt);
-  return transcribeGroq(pcm, prompt);
+  if (selected === "gemini") return transcribeGemini(pcm, context);
+  return transcribeGroq(pcm, context);
 }

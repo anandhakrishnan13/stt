@@ -1,4 +1,5 @@
 import { env } from "../../env";
+import { composeWhisperPrompt } from "./prompt";
 import {
   cleanTranscript,
   extractWords,
@@ -17,7 +18,7 @@ export class SttRateLimitError extends Error {
 
 export async function transcribeGroq(
   pcm: Uint8Array,
-  prompt?: string,
+  context?: string,
 ): Promise<Transcription> {
   const wav = pcm16ToWav(pcm);
   const form = new FormData();
@@ -27,7 +28,7 @@ export async function transcribeGroq(
   form.set("temperature", "0");
   form.set("timestamp_granularities[]", "word");
   if (env.STT_LANGUAGE) form.set("language", env.STT_LANGUAGE);
-  const effectivePrompt = prompt ?? env.STT_PROMPT;
+  const effectivePrompt = composeWhisperPrompt(env.STT_PROMPT, context);
   if (effectivePrompt) form.set("prompt", effectivePrompt);
 
   const response = await fetch(

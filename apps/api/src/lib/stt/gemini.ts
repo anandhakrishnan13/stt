@@ -1,5 +1,6 @@
 import { env, geminiApiKeys } from "../../env";
 import { SttRateLimitError } from "./groq";
+import { composeSttPrompt, GEMINI_STT_INSTRUCTION } from "./prompt";
 import {
   cleanTranscript,
   extractWords,
@@ -12,7 +13,7 @@ let currentKeyIndex = 0;
 
 export async function transcribeGemini(
   pcm: Uint8Array,
-  prompt?: string,
+  context?: string,
 ): Promise<Transcription> {
   const keys = geminiApiKeys();
   if (keys.length === 0) {
@@ -21,9 +22,7 @@ export async function transcribeGemini(
 
   const wav = pcm16ToWav(pcm);
   const base64Audio = Buffer.from(wav).toString("base64");
-  const effectivePrompt =
-    prompt ??
-    "Transcribe this audio verbatim in the original spoken language (Hindi, English, or mixed Hinglish). Output ONLY the transcribed words with no extra explanations or markdown.";
+  const effectivePrompt = composeSttPrompt(GEMINI_STT_INSTRUCTION, context);
 
   const body = JSON.stringify({
     contents: [
