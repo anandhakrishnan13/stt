@@ -40,6 +40,7 @@ export function ChangePasswordDialog({
     register,
     handleSubmit,
     setError,
+    reset,
     formState: { errors, isSubmitting },
   } = useForm<ChangePasswordInput>({
     resolver: zodResolver(changePasswordSchema),
@@ -77,9 +78,13 @@ export function ChangePasswordDialog({
     setFormError(null);
     try {
       await api.changePassword(values);
-      saveCachedUser(null);
-      setNotice(null);
-      window.location.href = "/login?changed=1";
+      setNotice("Password updated successfully.");
+      reset();
+      setCodeSent(false);
+      setTimeout(() => {
+        onOpenChange(false);
+        setNotice(null);
+      }, 1000);
     } catch (error) {
       setFormError(applyApiError(error, setError));
     }

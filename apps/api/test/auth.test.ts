@@ -325,8 +325,16 @@ describe("password change and reset", () => {
       headers: { cookie: `st_access=${accessBefore}` },
       payload: { currentPassword: PASSWORD, code, newPassword: NEW_PASSWORD },
     });
-    expect(changed.statusCode).toBe(204);
+    expect(changed.statusCode).toBe(200);
 
+    const newAccess = cookieValue(changed, "st_access");
+    expect(newAccess).toBeTruthy();
+    const authedWithNew = await app.inject({
+      method: "GET",
+      url: "/auth/me",
+      headers: { cookie: `st_access=${newAccess}` },
+    });
+    expect(authedWithNew.statusCode).toBe(200);
     const staleAccess = await app.inject({
       method: "GET",
       url: "/auth/me",

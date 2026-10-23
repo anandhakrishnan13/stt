@@ -47,7 +47,7 @@ function toDTO(user: PublicUser): UserDTO {
   };
 }
 
-async function startSession(
+export async function startSession(
   reply: FastifyReply,
   user: Pick<UserRow, "id" | "tokenVersion">,
   request: FastifyRequest,

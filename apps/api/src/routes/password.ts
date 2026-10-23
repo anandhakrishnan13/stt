@@ -17,6 +17,7 @@ import { limits } from "../lib/limits";
 import { sendPasswordChangedMail } from "../lib/mailer";
 import { consumeOtp, issueOtp } from "../lib/otp";
 import { revokeAllForUser } from "../lib/tokens";
+import { startSession } from "./auth";
 
 export async function passwordRoutes(app: FastifyInstance): Promise<void> {
   app.post(
@@ -67,7 +68,7 @@ export async function passwordRoutes(app: FastifyInstance): Promise<void> {
       });
 
       const passwordHash = await hashPassword(input.newPassword);
-      await db
+      const [updated] = await db
         .update(users)
         .set({
           passwordHash,
@@ -76,9 +77,15 @@ export async function passwordRoutes(app: FastifyInstance): Promise<void> {
           lockedUntil: null,
           updatedAt: new Date(),
         })
-        .where(eq(users.id, user.id));
+        .where(eq(users.id, user.id))
+        .returning();
+      if (!updated) throw errors.internal();
+
+      // Revoke all prior refresh tokens (other sessions/devices)
       await revokeAllForUser(user.id);
-      clearAuthCookies(reply);
+
+      // Keep the current caller signed in with a fresh token for the new tokenVersion
+      await startSession(reply, updated, request);
       sendPasswordChangedMail(user.email, user.firstName);
       void recordAudit({
         action: "password_changed",
@@ -87,7 +94,7 @@ export async function passwordRoutes(app: FastifyInstance): Promise<void> {
         ip: request.ip,
       });
 
-      return reply.code(204).send();
+      return reply.code(200).send({ status: "ok" });
     },
   );
 
