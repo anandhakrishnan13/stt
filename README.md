@@ -1,198 +1,84 @@
 # Speech to Text
 
-Multilingual (Hindi/English code-mixed) real-time transcription service.
+Multilingual (Hindi/English code-mixed) real-time speech-to-text application with live streaming transcription, persistent history, and audio playback.
 
-Stream audio from your browser → six-second PCM windows are sent to Groq-hosted Whisper → segments appear live in the UI → segments are persisted in PostgreSQL alongside the compressed audio in Supabase Storage.
+## Tech Stack
 
-## Stack
+- **Frontend**: Next.js 15 (App Router), React 19, Tailwind CSS
+- **API**: Fastify 5, TypeScript, Bun
+- **Database**: PostgreSQL 17 (Supabase / Docker) + Drizzle ORM
+- **Speech-to-Text**: Groq Whisper (`whisper-large-v3-turbo`)
+- **Audio Storage**: Supabase Storage (private bucket) / local disk
+- **Auth**: Argon2id passwords, JWT access + rotating refresh cookies, email OTP
 
-| Layer | Choice |
-| --- | --- |
-| Frontend | Next.js 15 (App Router) + React 19 + Tailwind v4 + shadcn-style components |
-| API | Fastify 5 + TypeScript on Bun |
-| Database | PostgreSQL 17 (Docker locally, Supabase Postgres in production) + Drizzle ORM |
-| Speech-to-text | Groq Whisper (`whisper-large-v3-turbo`) — local Whisper fallback behind `STT_PROVIDER=whisper` |
-| Audio storage | Local filesystem by default, Supabase Storage (private bucket) in production |
-| Auth | argon2id (`Bun.password`), JWT access cookie, opaque rotating refresh cookie, email OTP |
-| Mail | Nodemailer → Mailpit locally (web UI at :8025), any SMTP in production |
-| Tooling | Bun workspaces, `bun test` integration suite |
+## Project Structure
 
 ```
-apps/api       Fastify REST API, Drizzle schema + PostgreSQL migrations, OTP/mailer/token libs
-apps/web       Next.js auth pages, session client, dashboard shell
-packages/shared  Zod contracts shared by both sides (validation + types)
-docs/superpowers/specs  Design spec for this slice
+apps/api/         Fastify REST API & WebSocket server, Drizzle ORM, auth & STT services
+apps/web/         Next.js web app (chat/workspace UI, auth flows)
+packages/shared/  Shared TypeScript types & Zod schemas
 ```
 
 ## Quickstart
 
+### Prerequisites
+- [Bun](https://bun.sh/) (v1.2+)
+- Docker (for local PostgreSQL & Mailpit)
+- [Groq API Key](https://console.groq.com/keys)
+
+### Setup & Run
+
 ```bash
+# 1. Install dependencies
 bun install
-bun run setup          # writes apps/api/.env + apps/web/.env.local (generated secrets)
-bun run services:up    # PostgreSQL + Mailpit (OTP inbox at http://localhost:8025)
-# Add a Groq API key to apps/api/.env before anything imports the API config:
-#   GROQ_API_KEY=gsk_...        (create one at https://console.groq.com/keys)
-bun run db:migrate     # apply Drizzle migrations to local Postgres
-bun run dev:api        # http://localhost:3001
-bun run dev:web        # http://localhost:3000
+
+# 2. Generate local environment files
+bun run setup
+
+# 3. Start local Postgres & Mailpit (OTP test inbox)
+bun run services:up
+
+# 4. Add your Groq API key in apps/api/.env:
+#    GROQ_API_KEY=gsk_...
+
+# 5. Run database migrations
+bun run db:migrate
+
+# 6. Start both API (:3001) and Web (:3000)
+bun run dev
 ```
 
-The API validates its environment at import, so `db:migrate` and `dev:api` fail until
-`GROQ_API_KEY` is set. The key is **server-only**: it lives in `apps/api/.env`, is read only by the
-API process, and must never be exposed as a `NEXT_PUBLIC_*` variable. To run without Groq, point
-`STT_PROVIDER=whisper` at a local Whisper server instead.
+- Web App: `http://localhost:3000`
+- Mailpit Web UI (local email OTPs): `http://localhost:8025`
 
-Sign up at http://localhost:3000/signup, then read the 6-digit code in Mailpit.
+## Key Environment Variables
 
-### Configuration
+### `apps/api/.env`
+| Variable | Description | Default / Example |
+| --- | --- | --- |
+| `DATABASE_URL` | PostgreSQL connection string | `postgresql://stt:stt@127.0.0.1:5432/stt` |
+| `DATABASE_SSL` | Enable SSL for remote databases | `false` locally, `true` for Supabase |
+| `GROQ_API_KEY` | Server-side Groq API key | `gsk_...` |
+| `STORAGE_DRIVER` | Audio storage backend | `local` or `supabase` |
+| `SUPABASE_URL` | Supabase project URL (if storage=supabase) | `https://<id>.supabase.co` |
+| `SUPABASE_SERVICE_ROLE_KEY` | Server-only Supabase service role key | `sb_secret_...` |
+| `SMTP_URL` | Mail transport for OTP delivery | `smtp://127.0.0.1:1025` (Mailpit) |
 
-Config lives per app: `apps/api/.env` (from `apps/api/.env.example`) and `apps/web/.env.local`
-(from `apps/web/.env.example`). `bun run setup` creates both and never overwrites them.
-Browser-side recording and live-socket tuning uses the public `NEXT_PUBLIC_RECORDING_*` and
-`NEXT_PUBLIC_STT_*` keys listed in `apps/web/.env.example`.
+### `apps/web/.env.local`
+| Variable | Description | Default |
+| --- | --- | --- |
+| `NEXT_PUBLIC_API_URL` | Base URL of API | `http://localhost:3001` (empty in prod for same-origin) |
 
-| Key | Purpose |
-| --- | --- |
-| `DATABASE_URL` | `postgresql://stt:stt@127.0.0.1:5432/stt` (Docker); Supabase **session pooler** URI in production |
-| `DATABASE_SSL` | `false` locally, `true` for Supabase pooler |
-| `DATABASE_POOL_MAX` | connection pool size (default `5`) |
-| `DATABASE_CONNECT_TIMEOUT_SECONDS` / `DATABASE_IDLE_TIMEOUT_SECONDS` / `DATABASE_MAX_LIFETIME_SECONDS` | postgres.js pool tuning (defaults `10` / `20` / `600`) |
-| `JWT_SECRET`, `OTP_PEPPER` | HS256 signing key / OTP HMAC pepper (32+ chars, generated by `bun run setup`) |
-| `ARGON2_*` | Argon2id cost parameters (`19456` KiB, 2 iterations, parallelism 1, 32-byte hash) |
-| `APP_NAME` | product name in email copy and subjects |
-| `SMTP_URL`, `SMTP_FROM` | `smtp://127.0.0.1:1025` → Mailpit; empty logs OTPs to stdout |
-| `CORS_ORIGINS`, `PUBLIC_APP_URL` | browser origin allowed to call the API |
-| `ACCESS_TOKEN_TTL_SECONDS` / `REFRESH_TOKEN_TTL_DAYS` | 900 / 30 by default |
-| `OTP_*` | TTL, attempts, resend cooldown, hourly cap |
-| `LOGIN_*` | failure threshold and lock duration |
-| `RATE_LIMIT_*` | per-route limits |
-| `STORAGE_DRIVER` | `local` (files in `STORAGE_DIR`) or `supabase` |
-| `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY`, `SUPABASE_BUCKET` | only for `STORAGE_DRIVER=supabase`; private bucket, server-side key |
-| `MAX_AUDIO_BYTES` | upload cap per recording (15 MiB to match Supabase bucket) |
-| `STT_PROVIDER` | `groq` (default, hosted Whisper) or `whisper` (local fallback) |
-| `GROQ_API_KEY` | **Server-only.** Never expose as `NEXT_PUBLIC_*`. |
-| `STT_GROQ_MODEL` | `whisper-large-v3-turbo` (default) |
-| `STT_STEP_MS` / `STT_MAX_WINDOW_MS` / `STT_MIN_WINDOW_MS` | `6000` / `6000` / `1500` — keeps Groq under 20 RPM and the 10-second billing minimum |
-| `STT_MAX_BUFFER_MS` / `STT_CONTEXT_CHARS` / `STT_ERROR_COOLDOWN_MS` / `STT_MAX_FINAL_COOLDOWN_WAIT_MS` | live-socket buffer and prompt/error tuning (`60000` / `200` / `5000` / `10000`) |
+## How It Works
 
-### Database
-
-**PostgreSQL only.** No other SQL dialect is supported.
-
-- **Local:** Docker Postgres via `docker-compose.yml` at `postgresql://stt:stt@127.0.0.1:5432/stt`.
-- **Production:** Supabase Postgres through the **session pooler** on port `5432`, with `DATABASE_SSL=true`. The pooler does not reliably support prepared statements, so the driver uses `prepare: false`.
-
-### Supabase Storage
-
-Private bucket named `transcripts` with a 15 MiB file-size limit. The `SUPABASE_SERVICE_ROLE_KEY` stays server-side. New `sb_secret_...` keys are sent as `apikey` only (not as `Authorization: Bearer`); legacy JWT keys get both headers.
-
-### Abandoned recordings
-
-`scripts/supabase-cleanup.sql` installs `pg_cron` and schedules an hourly job. It deletes staged chunks and marks recordings failed when they have stayed in `recording` for more than two hours (a tab closed without finishing or aborting).
-
-### Groq Whisper
-
-- Model: `whisper-large-v3-turbo`.
-- Window size: six seconds (`STT_STEP_MS=6000`). The free tier bills a 10-second minimum per request and allows 20 RPM / 7,200 audio-seconds per hour. Six-second windows keep usage within limits.
-- `Retry-After` handling: on HTTP 429 the stream enters a cooldown and resumes automatically.
-- A user who stops recording before a full window completes still gets the final audio transcribed.
-
-### Deployment (2-vCPU ARM server)
-
-Run only the API and web app — no local Whisper inference. Supabase handles Postgres and audio storage; Groq handles transcription.
-
-After deploying migrations, apply the hardening SQL once:
-
-```bash
-psql "$DATABASE_URL" -f scripts/supabase-hardening.sql
-```
-
-This enables RLS and revokes `anon` / `authenticated` access on all application tables. The API connects as the table owner (bypasses RLS); browser clients using the publishable key get zero access.
-
-**Security:** Never put `SUPABASE_SERVICE_ROLE_KEY` or `GROQ_API_KEY` in `NEXT_PUBLIC_*`. Keep the Supabase bucket private.
-
-## API
-
-All responses are JSON; errors are `{ "error": { "code", "message", "details?" } }`.
-
-| Method | Path | Auth | Body |
-| --- | --- | --- | --- |
-| POST | `/auth/signup` | — | `firstName, lastName, email, password` → 202 (always, even if the email exists) |
-| POST | `/auth/verify-email` | — | `email, code` → 200 + session cookies |
-| POST | `/auth/resend-otp` | — | `email` → 202 |
-| POST | `/auth/login` | — | `email, password` → 200 + cookies, 403 unverified, 423 locked |
-| POST | `/auth/refresh` | refresh cookie | rotates the refresh token → 200 + cookies |
-| POST | `/auth/logout` | refresh cookie | 204 |
-| POST | `/auth/logout-all` | access cookie | 204, bumps `token_version` |
-| GET | `/auth/me` | access cookie | 200 `{ user }` |
-| POST | `/auth/password/change/otp` | access cookie | 202 (mails a code) |
-| POST | `/auth/password/change` | access cookie | `currentPassword, code, newPassword` → 204, revokes all sessions |
-| POST | `/auth/password/reset/request` | — | `email` → 202 (always) |
-| POST | `/auth/password/reset/confirm` | — | `email, code, newPassword` → 204 |
-| POST | `/transcripts` | access cookie | `mime` → 201 recording row (status `recording`) |
-| POST | `/transcripts/:id/chunks?seq=N` | access cookie | raw `application/octet-stream`, strict sequence, retry-safe |
-| POST | `/transcripts/:id/finish` | access cookie | `durationMs` → `ready` + stored audio (or `failed` when empty) |
-| POST | `/transcripts/:id/abort` | access cookie | 204, discards staged chunks, marks `failed` |
-| GET | `/transcripts/:id/audio` | access cookie | audio bytes, `Range`/`206` support, ownership enforced |
-| GET | `/transcripts?q=&cursor=&limit=` | access cookie | keyset-paginated, newest first, title search (ILIKE) |
-| GET | `/transcripts/:id` | access cookie | 404 for another user's row |
-| PATCH | `/transcripts/:id` | access cookie | `title` → renamed transcript, audited |
-| DELETE | `/transcripts/:id` | access cookie | 204, soft delete, audited |
-| WS | `/transcripts/:id/stream` | access cookie | 16 kHz mono PCM → Groq Whisper → live segments |
-| GET | `/health` | — | liveness |
-
-## Audio pipeline
-
-The browser is the only encoder: `MediaRecorder` produces compressed chunks (Opus/WebM, or
-AAC/MP4 on Safari) at 24 kbps. Chunks go to `POST /transcripts/:id/chunks?seq=N` in order; the API
-appends them to a staging file, rejecting gaps and treating a replayed `seq` as a no-op. On
-`finish`, the assembled file is written to the storage driver and the row flips to `ready` with its
-mime type, byte count, and duration. Serving goes through the API so cookies and ownership checks
-apply; `Range` requests are proxied to the driver, which is what makes `<audio>` seeking work.
-
-Audio is compressed once (no server-side ffmpeg), stored privately, and removed when the transcript
-is deleted. Supabase Storage is used as an object path in the database — never a public URL — and
-the browser only ever talks to this API, so the service-role key stays server-side.
-
-## Live transcription
-
-The browser streams 16 kHz mono PCM over an authenticated WebSocket. The API buffers six-second windows, sends each as a WAV file to Groq's `whisper-large-v3-turbo`, and commits the returned words in order; a stop flushes the remaining partial window. The first committed segment sets the transcript title. Finalized segments are persisted in PostgreSQL and pushed to the browser, and leftover hypotheses are sent as interim text.
-
-## Security decisions
-
-- **argon2id** (`Bun.password`, 19 MiB, t=2) for passwords; **HMAC-SHA256 + server pepper** for OTPs,
-  so a database leak exposes neither plaintext codes nor reusable password hashes.
-- **Access token = JWT (15 min)** in an `httpOnly`, `SameSite=Lax` cookie. Every request re-checks the
-  user row: missing, soft-deleted, suspended, or `token_version` mismatch ⇒ 401. A deleted user's
-  token dies immediately, as does every token after a password change.
-- **Refresh token = 256-bit opaque**, SHA-256 at rest, scoped to `/auth`, rotated on each use. Replaying
-  a rotated token revokes the whole token family and writes an audit event.
-- **OTP**: 6 digits, 10-minute TTL, 5 attempts, single use, 60-second resend cooldown, 5 sends per
-  email/purpose/hour. Issuing a new code invalidates the previous one. Comparison is constant-time.
-- **Enumeration resistance**: signup, resend, and reset-request always answer 202; login only reveals
-  unverified/locked state after a correct password; unknown accounts burn a dummy argon2 verification.
-- **Abuse limits**: per-IP rate limits (global + per route), 5 failed logins lock the account for 15
-  minutes, `Origin` whitelist enforced on state-changing requests, helmet security headers.
-- **Soft delete**: `users.deleted_at` (stale-token check) and `transcripts.deleted_at` (history)
-  keep audit trails intact; deleted transcripts vanish from every read and 404 on direct access.
-- **Ownership in the query**: transcript reads filter on `user_id`, so another account's id is
-  indistinguishable from a missing one.
-- **Supabase hardening**: RLS enabled on all tables; `anon` and `authenticated` roles revoked. The API connects as the table owner. Apply `scripts/supabase-hardening.sql` after migrations.
+1. **Audio Streaming**: Browser captures 16 kHz mono PCM and streams it over an authenticated WebSocket (`/transcripts/:id/stream`).
+2. **Real-Time Transcription**: Fastify buffers incoming audio windows and streams them to Groq's `whisper-large-v3-turbo`, persisting finalized segments to PostgreSQL and emitting real-time transcript updates.
+3. **Storage & Playback**: Compressed audio chunks are assembled on completion and saved privately to Supabase Storage, streamable directly via HTTP range requests.
 
 ## Testing
 
 ```bash
-bun run services:up    # start PostgreSQL + Mailpit
-bun test               # 48 integration tests, disposable PostgreSQL database per process
+bun run services:up    # ensure test database is reachable
+bun run test           # run integration test suite
+bun run typecheck      # typecheck all workspaces
 ```
-
-Tests create a unique `stt_test_<pid>_<random>` database, run migrations, exercise the feature, and drop the database on teardown. No shared state between test processes.
-
-Covered: signup → verify → session, OTP attempt cap, duplicate-signup non-enumeration, unverified
-login block, lockout, refresh rotation + replay detection, soft-deleted user token rejection,
-logout-all, password change killing old sessions, reset flow, transcript listing/search/pagination,
-cross-user 404s, rename validation + audit, soft delete, CORS preflight for PATCH/DELETE,
-recording chunk ordering/retry/limits, finish idempotency and mime negotiation, stored audio bytes,
-`Range`/`206`/`416` playback, staged-chunk cleanup on abort/delete, the Supabase Storage driver
-against a local stub of its REST API, Groq Whisper transcription with word timestamps and rate-limit
-handling, and live WebSocket streaming with segment persistence and title derivation.

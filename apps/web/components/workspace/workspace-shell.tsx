@@ -6,16 +6,18 @@ import { useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
 import { Sidebar } from "@/components/workspace/sidebar";
-import { useSession } from "@/lib/session";
+import { saveCachedUser, useSession } from "@/lib/session";
 
 export function WorkspaceShell({ children }: { children: ReactNode }) {
   const { user, loading, unauthenticated, error, reload } = useSession();
-  const router = useRouter();
   const [navOpen, setNavOpen] = useState(false);
 
   useEffect(() => {
-    if (unauthenticated) router.replace("/login");
-  }, [unauthenticated, router]);
+    if (unauthenticated) {
+      saveCachedUser(null);
+      window.location.href = "/login";
+    }
+  }, [unauthenticated]);
 
   if (loading) {
     return (

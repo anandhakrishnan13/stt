@@ -40,7 +40,7 @@ function LoginForm() {
     try {
       const res = await api.login(values);
       saveCachedUser(res.user);
-      router.replace(nextPath);
+      window.location.href = nextPath;
     } catch (error) {
       if (error instanceof ApiError && error.code === "EMAIL_UNVERIFIED") {
         setUnverifiedEmail(values.email);

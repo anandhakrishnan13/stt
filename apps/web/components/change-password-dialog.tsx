@@ -19,7 +19,7 @@ import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api";
 import { applyApiError } from "@/lib/form";
-
+import { saveCachedUser } from "@/lib/session";
 const RESEND_SECONDS = 60;
 
 export function ChangePasswordDialog({
@@ -77,8 +77,9 @@ export function ChangePasswordDialog({
     setFormError(null);
     try {
       await api.changePassword(values);
+      saveCachedUser(null);
       setNotice(null);
-      router.replace("/login?changed=1");
+      window.location.href = "/login?changed=1";
     } catch (error) {
       setFormError(applyApiError(error, setError));
     }

@@ -116,14 +116,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         setUser(null);
         saveCachedUser(null);
         setUnauthenticated(true);
-        router.replace("/login");
+        window.location.href = "/login";
       },
       logoutAll: async () => {
         await api.logoutAll().catch(() => {});
         setUser(null);
         saveCachedUser(null);
         setUnauthenticated(true);
-        router.replace("/login");
+        window.location.href = "/login";
       },
     }),
     [user, loading, unauthenticated, error, reload, router],
