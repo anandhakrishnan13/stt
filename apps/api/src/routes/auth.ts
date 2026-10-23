@@ -22,9 +22,8 @@ import { AppError, errors } from "../lib/errors";
 import { parseBody } from "../lib/http";
 import { limits } from "../lib/limits";
 import { sendAccountExistsMail } from "../lib/mailer";
-import { consumeOtp, issueOtp } from "../lib/otp";
+import { checkOtp, consumeOtp, consumeOtpRow, issueOtp } from "../lib/otp";
 import {
-  findLiveUser,
   issueRefreshToken,
   revokeAllForUser,
   revokeRefreshToken,
@@ -32,7 +31,12 @@ import {
   signAccessToken,
 } from "../lib/tokens";
 
-function toDTO(user: UserRow): UserDTO {
+type PublicUser = Pick<
+  UserRow,
+  "id" | "email" | "firstName" | "lastName" | "emailVerifiedAt" | "createdAt"
+>;
+
+function toDTO(user: PublicUser): UserDTO {
   return {
     id: user.id,
     email: user.email,
@@ -57,30 +61,32 @@ async function startSession(
   setAuthCookies(reply, { accessToken, refreshToken });
 }
 
-function isUniqueViolation(error: unknown): boolean {
-  if (typeof error !== "object" || error === null) return false;
-  if ("code" in error && error.code === "23505") return true;
-  // drizzle wraps query failures in DrizzleQueryError; postgres.js keeps the
-  // SQLSTATE on the PostgresError, which arrives as `cause`.
-  if (!("cause" in error)) return false;
-  const cause = error.cause;
-  return (
-    typeof cause === "object" &&
-    cause !== null &&
-    "code" in cause &&
-    cause.code === "23505"
-  );
-}
-
 export async function authRoutes(app: FastifyInstance): Promise<void> {
   app.post("/signup", { config: { rateLimit: limits.signup } }, async (request, reply) => {
     const input = parseBody(signupSchema, request.body);
 
-    const [existing] = await db.select().from(users).where(eq(users.email, input.email)).limit(1);
+    // Hash before touching the database so an existing address costs the same
+    // as a new one (no account-enumeration timing signal).
+    const passwordHash = await hashPassword(input.password);
 
-    if (existing) {
+    // One hop for the common case, and it also settles the concurrent-signup
+    // race the old lookup-then-insert needed a unique-violation catch for.
+    const [created] = await db
+      .insert(users)
+      .values({
+        email: input.email,
+        firstName: input.firstName,
+        lastName: input.lastName,
+        passwordHash,
+      })
+      .onConflictDoNothing({ target: users.email })
+      .returning();
+
+    if (!created) {
+      const [existing] = await db.select().from(users).where(eq(users.email, input.email)).limit(1);
+
       // Never reveal whether the address exists.
-      if (!existing.deletedAt && existing.status === "unverified") {
+      if (existing?.deletedAt === null && existing?.status === "unverified") {
         await issueOtp({
           email: existing.email,
           purpose: "verify_email",
@@ -90,10 +96,11 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
           if (error instanceof AppError && error.code === "OTP_COOLDOWN") return;
           throw error;
         });
-      } else if (!existing.deletedAt && existing.emailVerifiedAt) {
-        await sendAccountExistsMail(existing.email, existing.firstName).catch(() => {});
+      } else if (existing?.deletedAt === null && existing?.emailVerifiedAt) {
+        sendAccountExistsMail(existing.email, existing.firstName);
       }
-      await recordAudit({
+      // Audit is best-effort and must not delay the response.
+      void recordAudit({
         action: "signup_existing_email",
         target: input.email,
         ip: request.ip,
@@ -102,29 +109,6 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       return reply.code(202).send({ status: "pending_verification" });
     }
 
-    const passwordHash = await hashPassword(input.password);
-
-    let created: UserRow | undefined;
-    try {
-      [created] = await db
-        .insert(users)
-        .values({
-          email: input.email,
-          firstName: input.firstName,
-          lastName: input.lastName,
-          passwordHash,
-        })
-        .returning();
-    } catch (error) {
-      // Unique violation from a concurrent signup: answer identically.
-      if (isUniqueViolation(error)) {
-        return reply.code(202).send({ status: "pending_verification" });
-      }
-      throw error;
-    }
-
-    if (!created) throw errors.internal();
-
     await issueOtp({
       email: created.email,
       purpose: "verify_email",
@@ -132,7 +116,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       firstName: created.firstName,
     });
 
-    await recordAudit({
+    void recordAudit({
       action: "signup_created",
       actorUserId: created.id,
       target: created.email,
@@ -159,22 +143,33 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       if (user.status === "suspended") throw errors.suspended();
 
       if (!user.emailVerifiedAt) {
-        await consumeOtp({ email: user.email, purpose: "verify_email", code: input.code });
-        const [updated] = await db
-          .update(users)
-          .set({ status: "active", emailVerifiedAt: new Date(), updatedAt: new Date() })
-          .where(eq(users.id, user.id))
-          .returning();
-        if (!updated) throw errors.internal();
-        await recordAudit({
+        // Validate first (a bad code must not open a session), then spend one
+        // round trip on the three independent writes.
+        const otpId = await checkOtp({
+          email: user.email,
+          purpose: "verify_email",
+          code: input.code,
+        });
+        const verifiedAt = new Date();
+        const verified = { ...user, status: "active" as const, emailVerifiedAt: verifiedAt };
+
+        await Promise.all([
+          consumeOtpRow(otpId),
+          db
+            .update(users)
+            .set({ status: "active", emailVerifiedAt: verifiedAt, updatedAt: verifiedAt })
+            .where(eq(users.id, user.id)),
+          startSession(reply, user, request),
+        ]);
+
+        void recordAudit({
           action: "email_verified",
-          actorUserId: updated.id,
-          target: updated.email,
+          actorUserId: user.id,
+          target: user.email,
           ip: request.ip,
           userAgent: request.headers["user-agent"] ?? null,
         });
-        await startSession(reply, updated, request);
-        return reply.code(200).send({ user: toDTO(updated) });
+        return reply.code(200).send({ user: toDTO(verified) });
       }
 
       await startSession(reply, user, request);
@@ -240,7 +235,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
             .update(users)
             .set({ failedLoginCount: 0, lockedUntil, updatedAt: new Date() })
             .where(eq(users.id, user.id));
-          await recordAudit({
+          void recordAudit({
             action: "login_locked",
             actorUserId: user.id,
             target: user.email,
@@ -253,7 +248,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
           .update(users)
           .set({ failedLoginCount: failures, updatedAt: new Date() })
           .where(eq(users.id, user.id));
-        await recordAudit({
+        void recordAudit({
           action: "login_failed",
           actorUserId: user.id,
           target: user.email,
@@ -267,15 +262,26 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       if (user.status === "unverified") throw errors.emailUnverified();
       if (user.status === "suspended") throw errors.suspended();
 
-      const [refreshed] = await db
-        .update(users)
-        .set({ failedLoginCount: 0, lockedUntil: null, updatedAt: new Date() })
-        .where(eq(users.id, user.id))
-        .returning();
-      if (!refreshed) throw errors.internal();
+      // Only pay for the reset write when there is something to reset; run
+      // the write in parallel with session issuance so it does not add an RTT.
+      const resetNeeded = user.failedLoginCount > 0 || user.lockedUntil !== null;
+      let refreshed: PublicUser = user;
 
-      await startSession(reply, refreshed, request);
-      await recordAudit({
+      if (resetNeeded) {
+        const [updatedRows] = await Promise.all([
+          db
+            .update(users)
+            .set({ failedLoginCount: 0, lockedUntil: null, updatedAt: new Date() })
+            .where(eq(users.id, user.id))
+            .returning(),
+          startSession(reply, user, request),
+        ]);
+        if (!updatedRows[0]) throw errors.internal();
+        refreshed = updatedRows[0];
+      } else {
+        await startSession(reply, user, request);
+      }
+      void recordAudit({
         action: "login_succeeded",
         actorUserId: refreshed.id,
         target: refreshed.email,
@@ -299,9 +305,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       });
       const accessToken = await signAccessToken(result.user);
       setAuthCookies(reply, { accessToken, refreshToken: result.refreshToken });
-      const [row] = await db.select().from(users).where(eq(users.id, result.user.id)).limit(1);
-      if (!row) throw errors.unauthenticated();
-      return reply.code(200).send({ user: toDTO(row) });
+      return reply.code(200).send({ user: toDTO(result.user) });
     } catch (error) {
       clearAuthCookies(reply);
       throw error;
@@ -336,8 +340,6 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
   app.get("/me", { preHandler: requireAuth }, async (request) => {
     const current = request.user;
     if (!current) throw errors.unauthenticated();
-    const [row] = await db.select().from(users).where(eq(users.id, current.id)).limit(1);
-    if (!row) throw errors.unauthenticated();
-    return { user: toDTO(row) };
+    return { user: toDTO(current) };
   });
 }

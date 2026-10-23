@@ -16,6 +16,15 @@ export const sqlClient = postgres(env.DATABASE_URL, {
 export const db = drizzle(sqlClient, { schema });
 export type Db = typeof db;
 
+/**
+ * Open the pool before the first request. A remote PostgreSQL pays a
+ * TLS/auth handshake per connection (~3s to another continent); charging that
+ * to whoever signs up first is worse than paying it once at boot.
+ */
+export async function warmDb(): Promise<void> {
+  await Promise.all(Array.from({ length: env.DATABASE_POOL_MAX }, () => sqlClient`select 1`));
+}
+
 export async function closeDb(): Promise<void> {
   await sqlClient.end({ timeout: 5 });
 }

@@ -13,6 +13,7 @@ import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { ApiError, api } from "@/lib/api";
 import { applyApiError } from "@/lib/form";
+import { saveCachedUser } from "@/lib/session";
 
 function LoginForm() {
   const router = useRouter();
@@ -37,7 +38,8 @@ function LoginForm() {
     setFormError(null);
     setUnverifiedEmail(null);
     try {
-      await api.login(values);
+      const res = await api.login(values);
+      saveCachedUser(res.user);
       router.replace(nextPath);
     } catch (error) {
       if (error instanceof ApiError && error.code === "EMAIL_UNVERIFIED") {

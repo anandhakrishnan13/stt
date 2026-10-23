@@ -1,4 +1,5 @@
-import { and, count, desc, eq, gte, isNull } from "drizzle-orm";
+import { randomUUID } from "node:crypto";
+import { and, desc, eq, isNull, ne, sql } from "drizzle-orm";
 import { db } from "../db";
 import { emailOtps } from "../db/schema";
 import { env } from "../env";
@@ -15,75 +16,69 @@ export async function issueOtp(input: {
   const now = new Date();
   const hourAgo = new Date(now.getTime() - 60 * 60 * 1000);
 
-  const [recent] = await db
-    .select({ total: count() })
+  // Hourly cap and resend cooldown in one round trip: every extra query is a
+  // full network hop when the database is remote.
+  const [usage] = await db
+    .select({
+      hourly: sql<number>`count(*) filter (where ${emailOtps.sentAt} >= ${hourAgo.toISOString()})`.mapWith(Number),
+      lastSentAt: sql<Date | null>`max(${emailOtps.sentAt})`,
+    })
     .from(emailOtps)
-    .where(
-      and(
-        eq(emailOtps.email, input.email),
-        eq(emailOtps.purpose, input.purpose),
-        gte(emailOtps.sentAt, hourAgo),
-      ),
-    );
+    .where(and(eq(emailOtps.email, input.email), eq(emailOtps.purpose, input.purpose)));
 
-  if ((recent?.total ?? 0) >= env.OTP_HOURLY_LIMIT) {
+  if ((usage?.hourly ?? 0) >= env.OTP_HOURLY_LIMIT) {
     throw errors.otpCooldown(60 * 60);
   }
 
-  const [last] = await db
-    .select({ sentAt: emailOtps.sentAt })
-    .from(emailOtps)
-    .where(and(eq(emailOtps.email, input.email), eq(emailOtps.purpose, input.purpose)))
-    .orderBy(desc(emailOtps.sentAt))
-    .limit(1);
-
-  if (last) {
-    const elapsed = (now.getTime() - last.sentAt.getTime()) / 1000;
+  if (usage?.lastSentAt) {
+    const elapsed = (now.getTime() - new Date(usage.lastSentAt).getTime()) / 1000;
     if (elapsed < env.OTP_RESEND_COOLDOWN_SECONDS) {
       throw errors.otpCooldown(Math.ceil(env.OTP_RESEND_COOLDOWN_SECONDS - elapsed));
     }
   }
 
-  // Only the newest code for a purpose may be valid.
-  await db
-    .update(emailOtps)
-    .set({ consumedAt: now })
-    .where(
-      and(
-        eq(emailOtps.email, input.email),
-        eq(emailOtps.purpose, input.purpose),
-        isNull(emailOtps.consumedAt),
-      ),
-    );
-
   const code = generateOtp();
-  const [row] = await db
-    .insert(emailOtps)
-    .values({
+  const id = randomUUID();
+
+  // Only the newest code for a purpose may be valid. Both statements run
+  // concurrently (the update excludes the new row, so order does not matter),
+  // which halves the wall-clock cost of the two hops.
+  await Promise.all([
+    db.insert(emailOtps).values({
+      id,
       email: input.email,
       userId: input.userId ?? null,
       purpose: input.purpose,
       codeHmac: hmacOtp(code),
       expiresAt: new Date(now.getTime() + env.OTP_TTL_SECONDS * 1000),
       sentAt: now,
-    })
-    .returning({ id: emailOtps.id });
+    }),
+    db
+      .update(emailOtps)
+      .set({ consumedAt: now })
+      .where(
+        and(
+          eq(emailOtps.email, input.email),
+          eq(emailOtps.purpose, input.purpose),
+          isNull(emailOtps.consumedAt),
+          ne(emailOtps.id, id),
+        ),
+      ),
+  ]);
 
-  try {
-    await sendOtpMail(input.email, code, input.purpose, input.firstName);
-  } catch (error) {
-    if (row) await db.delete(emailOtps).where(eq(emailOtps.id, row.id));
-    console.error("[otp] delivery failed", error);
-    throw errors.internal();
-  }
+  sendOtpMail(input.email, code, input.purpose, input.firstName);
 }
 
-/** Throws a typed AppError on any failure; returns normally on success. */
-export async function consumeOtp(input: {
+/**
+ * Validates a code without consuming it: throws a typed AppError on any
+ * failure, returns the row id on success. Callers that have other writes to do
+ * can consume it concurrently with them.
+ */
+export async function checkOtp(input: {
   email: string;
   purpose: OtpPurpose;
   code: string;
-}): Promise<void> {
+}): Promise<string> {
   const [row] = await db
     .select()
     .from(emailOtps)
@@ -116,8 +111,19 @@ export async function consumeOtp(input: {
     throw errors.otpInvalid();
   }
 
-  await db
-    .update(emailOtps)
-    .set({ consumedAt: new Date() })
-    .where(eq(emailOtps.id, row.id));
+  return row.id;
+}
+
+/** Marks a checked code as used. */
+export async function consumeOtpRow(id: string): Promise<void> {
+  await db.update(emailOtps).set({ consumedAt: new Date() }).where(eq(emailOtps.id, id));
+}
+
+/** Throws a typed AppError on any failure; returns normally on success. */
+export async function consumeOtp(input: {
+  email: string;
+  purpose: OtpPurpose;
+  code: string;
+}): Promise<void> {
+  await consumeOtpRow(await checkOtp(input));
 }

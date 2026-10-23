@@ -6,6 +6,7 @@
     "packages/*"
   ],
   "scripts": {
+    "dev": "bun run --filter '@stt/api' --filter '@stt/web' dev",
     "dev:api": "bun run --cwd apps/api dev",
     "dev:web": "bun run --cwd apps/web dev",
     "test": "bun run --cwd apps/api test",

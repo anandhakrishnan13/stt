@@ -1,6 +1,7 @@
 "use client";
 
 import { Menu } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
 import { Sheet, SheetContent, SheetTitle } from "@/components/ui/sheet";
@@ -8,18 +9,29 @@ import { Sidebar } from "@/components/workspace/sidebar";
 import { useSession } from "@/lib/session";
 
 export function WorkspaceShell({ children }: { children: ReactNode }) {
-  const { user, loading } = useSession();
+  const { user, loading, unauthenticated, error, reload } = useSession();
   const router = useRouter();
   const [navOpen, setNavOpen] = useState(false);
 
   useEffect(() => {
-    if (!loading && !user) router.replace("/login");
-  }, [loading, user, router]);
+    if (unauthenticated) router.replace("/login");
+  }, [unauthenticated, router]);
 
   if (loading) {
     return (
       <div className="flex h-dvh items-center justify-center text-sm text-slate-500">
         Loading your workspace…
+      </div>
+    );
+  }
+
+  if (error && !user) {
+    return (
+      <div className="flex h-dvh flex-col items-center justify-center gap-3 px-6 text-center">
+        <p className="text-sm text-slate-600 dark:text-slate-300">{error}</p>
+        <Button type="button" variant="outline" onClick={() => void reload()}>
+          Try again
+        </Button>
       </div>
     );
   }

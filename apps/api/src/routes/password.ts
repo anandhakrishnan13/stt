@@ -35,7 +35,7 @@ export async function passwordRoutes(app: FastifyInstance): Promise<void> {
         userId: user.id,
         firstName: user.firstName,
       });
-      await recordAudit({
+      void recordAudit({
         action: "password_change_otp_requested",
         actorUserId: user.id,
         target: user.email,
@@ -79,8 +79,8 @@ export async function passwordRoutes(app: FastifyInstance): Promise<void> {
         .where(eq(users.id, user.id));
       await revokeAllForUser(user.id);
       clearAuthCookies(reply);
-      await sendPasswordChangedMail(user.email, user.firstName).catch(() => {});
-      await recordAudit({
+      sendPasswordChangedMail(user.email, user.firstName);
+      void recordAudit({
         action: "password_changed",
         actorUserId: user.id,
         target: user.email,
@@ -115,7 +115,7 @@ export async function passwordRoutes(app: FastifyInstance): Promise<void> {
         });
       }
 
-      await recordAudit({
+      void recordAudit({
         action: "password_reset_requested",
         target: input.email,
         ip: request.ip,
@@ -156,8 +156,8 @@ export async function passwordRoutes(app: FastifyInstance): Promise<void> {
         .where(eq(users.id, user.id));
       await revokeAllForUser(user.id);
       clearAuthCookies(reply);
-      await sendPasswordChangedMail(user.email, user.firstName).catch(() => {});
-      await recordAudit({
+      sendPasswordChangedMail(user.email, user.firstName);
+      void recordAudit({
         action: "password_reset",
         actorUserId: user.id,
         target: user.email,

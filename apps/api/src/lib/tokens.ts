@@ -75,11 +75,6 @@ export async function revokeAllForUser(userId: string): Promise<void> {
     .where(and(eq(refreshTokens.userId, userId), isNull(refreshTokens.revokedAt)));
 }
 
-export type SessionUser = Pick<
-  UserRow,
-  "id" | "email" | "firstName" | "lastName" | "tokenVersion"
->;
-
 export async function findLiveUser(userId: string): Promise<UserRow | null> {
   const [row] = await db
     .select()
@@ -97,18 +92,23 @@ export async function rotateRefreshToken(input: {
   token: string;
   ip?: string | null;
   userAgent?: string | null;
-}): Promise<{ user: SessionUser; refreshToken: string }> {
+}): Promise<{ user: UserRow; refreshToken: string }> {
   const hash = sha256Hex(input.token);
+  // Token and owner in one hop; a deleted/suspended owner still comes back
+  // (left join) so the family can be revoked exactly as before.
   const [row] = await db
-    .select()
+    .select({ token: refreshTokens, user: users })
     .from(refreshTokens)
+    .leftJoin(users, eq(users.id, refreshTokens.userId))
     .where(eq(refreshTokens.tokenHash, hash))
     .limit(1);
 
   if (!row) throw errors.unauthenticated("Session expired. Sign in again");
 
-  if (row.revokedAt) {
-    await revokeFamily(row.familyId);
+  const { token: stored, user } = row;
+
+  if (stored.revokedAt) {
+    await revokeFamily(stored.familyId);
     throw new AppError(
       ErrorCode.UNAUTHENTICATED,
       401,
@@ -116,43 +116,36 @@ export async function rotateRefreshToken(input: {
     );
   }
 
-  if (row.expiresAt.getTime() <= Date.now()) {
+  if (stored.expiresAt.getTime() <= Date.now()) {
     await revokeRefreshToken(input.token);
     throw errors.unauthenticated("Session expired. Sign in again");
   }
 
-  const user = await findLiveUser(row.userId);
-  if (!user) {
-    await revokeFamily(row.familyId);
+  if (!user || user.deletedAt || user.status !== "active") {
+    await revokeFamily(stored.familyId);
     throw errors.unauthenticated("Session expired. Sign in again");
   }
 
   const nextToken = randomToken();
-  const [next] = await db
-    .insert(refreshTokens)
-    .values({
+  const nextId = randomUUID();
+
+  // The old row is revoked and the replacement inserted in parallel; the
+  // replacement is excluded from the revoke by id, so ordering is irrelevant.
+  await Promise.all([
+    db.insert(refreshTokens).values({
+      id: nextId,
       userId: user.id,
       tokenHash: sha256Hex(nextToken),
-      familyId: row.familyId,
+      familyId: stored.familyId,
       expiresAt: refreshExpiry(),
       ip: input.ip ?? null,
       userAgent: input.userAgent ?? null,
-    })
-    .returning({ id: refreshTokens.id });
+    }),
+    db
+      .update(refreshTokens)
+      .set({ revokedAt: new Date(), replacedBy: nextId })
+      .where(eq(refreshTokens.id, stored.id)),
+  ]);
 
-  await db
-    .update(refreshTokens)
-    .set({ revokedAt: new Date(), replacedBy: next?.id })
-    .where(eq(refreshTokens.id, row.id));
-
-  return {
-    user: {
-      id: user.id,
-      email: user.email,
-      firstName: user.firstName,
-      lastName: user.lastName,
-      tokenVersion: user.tokenVersion,
-    },
-    refreshToken: nextToken,
-  };
+  return { user, refreshToken: nextToken };
 }

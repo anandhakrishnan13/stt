@@ -8,6 +8,8 @@ export type AuthUser = {
   email: string;
   firstName: string;
   lastName: string;
+  emailVerifiedAt: Date | null;
+  createdAt: Date;
 };
 
 declare module "fastify" {
@@ -32,10 +34,14 @@ export async function requireAuth(request: FastifyRequest): Promise<void> {
     throw errors.unauthenticated("Session is no longer valid. Sign in again");
   }
 
+  // The row is already loaded here; handlers that only need public fields
+  // must not pay a second round trip for it.
   request.user = {
     id: user.id,
     email: user.email,
     firstName: user.firstName,
     lastName: user.lastName,
+    emailVerifiedAt: user.emailVerifiedAt,
+    createdAt: user.createdAt,
   };
 }

@@ -13,6 +13,7 @@ import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
 import { api } from "@/lib/api";
 import { applyApiError } from "@/lib/form";
+import { saveCachedUser } from "@/lib/session";
 
 const RESEND_SECONDS = 60;
 
@@ -45,7 +46,8 @@ function VerifyEmailForm() {
     setFormError(null);
     setNotice(null);
     try {
-      await api.verifyEmail(values);
+      const res = await api.verifyEmail(values);
+      saveCachedUser(res.user);
       router.push("/");
     } catch (error) {
       setFormError(applyApiError(error, setError));
