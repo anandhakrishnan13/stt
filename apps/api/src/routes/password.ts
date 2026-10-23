@@ -57,8 +57,10 @@ export async function passwordRoutes(app: FastifyInstance): Promise<void> {
       const [user] = await db.select().from(users).where(eq(users.id, current.id)).limit(1);
       if (!user) throw errors.unauthenticated();
 
-      if (!(await verifyPassword(input.currentPassword, user.passwordHash))) {
-        throw errors.validation({ currentPassword: "Current password is incorrect" });
+      if (input.currentPassword) {
+        if (!(await verifyPassword(input.currentPassword, user.passwordHash))) {
+          throw errors.validation({ currentPassword: "Current password is incorrect" });
+        }
       }
 
       await consumeOtp({

@@ -35,11 +35,13 @@ export function ChangePasswordDialog({
   const [cooldown, setCooldown] = useState(0);
   const [formError, setFormError] = useState<string | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [forgotPassword, setForgotPassword] = useState(false);
 
   const {
     register,
     handleSubmit,
     setError,
+    setValue,
     reset,
     formState: { errors, isSubmitting },
   } = useForm<ChangePasswordInput>({
@@ -51,6 +53,7 @@ export function ChangePasswordDialog({
     if (open) return;
     setFormError(null);
     setNotice(null);
+    setForgotPassword(false);
   }, [open]);
 
   useEffect(() => {
@@ -75,12 +78,19 @@ export function ChangePasswordDialog({
   }
 
   async function onSubmit(values: ChangePasswordInput) {
-    setFormError(null);
+    if (!forgotPassword && (!values.currentPassword || values.currentPassword.trim() === "")) {
+      setError("currentPassword", { message: "Current password is required" });
+      return;
+    }
     try {
-      await api.changePassword(values);
+      const payload: ChangePasswordInput = forgotPassword
+        ? { code: values.code, newPassword: values.newPassword }
+        : values;
+      await api.changePassword(payload);
       setNotice("Password updated successfully.");
       reset();
       setCodeSent(false);
+      setForgotPassword(false);
       setTimeout(() => {
         onOpenChange(false);
         setNotice(null);
@@ -121,15 +131,31 @@ export function ChangePasswordDialog({
           </div>
 
           <form id="change-password-form" method="post" onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
-            <FormField id="currentPassword" label="Current password" error={errors.currentPassword?.message}>
-              <Input
-                id="currentPassword"
-                type="password"
-                autoComplete="current-password"
-                invalid={Boolean(errors.currentPassword)}
-                {...register("currentPassword")}
+            <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                id="forgotPassword"
+                checked={forgotPassword}
+                onChange={(e) => {
+                  setForgotPassword(e.target.checked);
+                  if (e.target.checked) setValue("currentPassword", "");
+                }}
+                className="size-4 rounded border-slate-300 text-slate-900 focus:ring-slate-500 dark:border-slate-700 dark:bg-slate-900"
               />
-            </FormField>
+              Forgot current password?
+            </label>
+
+            {!forgotPassword && (
+              <FormField id="currentPassword" label="Current password" error={errors.currentPassword?.message}>
+                <Input
+                  id="currentPassword"
+                  type="password"
+                  autoComplete="current-password"
+                  invalid={Boolean(errors.currentPassword)}
+                  {...register("currentPassword")}
+                />
+              </FormField>
+            )}
             <FormField id="code" label="Email code" error={errors.code?.message}>
               <Input
                 id="code"

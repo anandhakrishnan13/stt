@@ -113,17 +113,17 @@ export const resendOtpSchema = z.object({
 
 export const changePasswordSchema = z
   .object({
-    currentPassword: z
-      .string({ error: "Current password is required" })
-      .min(1, "Current password is required")
-      .max(128),
+    currentPassword: z.string().max(128).optional(),
     code: otpCodeSchema,
     newPassword: passwordSchema,
   })
-  .refine((value) => value.currentPassword !== value.newPassword, {
-    path: ["newPassword"],
-    message: "Choose a password different from your current one",
-  });
+  .refine(
+    (value) => !value.currentPassword || value.currentPassword !== value.newPassword,
+    {
+      path: ["newPassword"],
+      message: "Choose a password different from your current one",
+    },
+  );
 
 export const resetRequestSchema = z.object({
   email: emailSchema,

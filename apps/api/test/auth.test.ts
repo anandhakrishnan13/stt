@@ -348,6 +348,22 @@ describe("password change and reset", () => {
     const newPassword = await login(email, NEW_PASSWORD);
     expect(newPassword.statusCode).toBe(200);
 
+    // Change password again with forgot-password mode (no currentPassword, valid OTP)
+    const otpRequest2 = await app.inject({
+      method: "POST",
+      url: "/auth/password/change/otp",
+      headers: { cookie: `st_access=${newAccess}` },
+    });
+    expect(otpRequest2.statusCode).toBe(202);
+    const code2 = lastOtpCode();
+
+    const changedWithoutCurrent = await app.inject({
+      method: "POST",
+      url: "/auth/password/change",
+      headers: { cookie: `st_access=${newAccess}` },
+      payload: { code: code2, newPassword: "EvenNewerPassword123" },
+    });
+    expect(changedWithoutCurrent.statusCode).toBe(200);
     expect(cookies.length).toBeGreaterThan(0);
   });
 
