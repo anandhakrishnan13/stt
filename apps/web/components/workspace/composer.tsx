@@ -5,6 +5,7 @@ import { Loader2, Mic, Square } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { VoiceRecorder } from "@/lib/recorder";
+import { useTypewriter } from "@/lib/use-typewriter";
 import { cn } from "@/lib/utils";
 
 type ComposerState =
@@ -30,6 +31,12 @@ export function Composer() {
     }
   });
   const recorderRef = useRef<VoiceRecorder | null>(null);
+  const recording = state.phase === "recording";
+  const committedText = lines
+    .map((line) => line.text.trim())
+    .filter(Boolean)
+    .join(" ");
+  const typed = useTypewriter(committedText, recording);
 
   function selectModel(m: "whisper" | "gemini") {
     setModel(m);
@@ -43,7 +50,7 @@ export function Composer() {
     if (transcriptRef.current) {
       transcriptRef.current.scrollTop = transcriptRef.current.scrollHeight;
     }
-  }, [lines, interim]);
+  }, [typed, interim]);
   useEffect(() => {
     if (state.phase !== "recording") return;
     setElapsedMs(0);
@@ -110,7 +117,6 @@ export function Composer() {
     await recorder?.cancel();
   }
 
-  const recording = state.phase === "recording";
   const busy = state.phase === "starting" || state.phase === "finishing";
 
   const note = notice ?? (
@@ -171,21 +177,24 @@ export function Composer() {
         {recording || lines.length > 0 || interim ? (
           <div
             ref={transcriptRef}
-            aria-live="polite"
             aria-label="Live transcript"
-            className="max-h-40 space-y-1.5 overflow-y-auto px-3 pb-2 pt-1 text-sm scroll-smooth"
+            className="max-h-40 overflow-y-auto px-3 pb-2 pt-1 text-sm scroll-smooth"
           >
-            {lines.map((line) => (
-              <p key={line.id} className="text-slate-800 dark:text-slate-200">
-                {line.text}
-              </p>
-            ))}
-            {interim ? (
-              <p className="text-slate-500 dark:text-slate-400">
-                {interim}
-                <span className="inline-block w-1.5 h-3.5 ml-1 align-baseline bg-rose-500 dark:bg-rose-400 animate-pulse rounded-xs" />
-              </p>
-            ) : null}
+            <p className="text-slate-800 dark:text-slate-200">
+              {typed}
+              {interim ? (
+                <span className="text-slate-500 dark:text-slate-400">
+                  {typed ? " " : ""}
+                  {interim}
+                </span>
+              ) : null}
+              {recording ? (
+                <span className="ml-0.5 inline-block h-3.5 w-1.5 animate-pulse rounded-xs bg-rose-500 align-baseline dark:bg-rose-400" />
+              ) : null}
+            </p>
+            <p className="sr-only" aria-live="polite">
+              {lines.at(-1)?.text ?? ""}
+            </p>
             {recording ? (
               <div className="flex items-center gap-1.5 pt-0.5 text-xs text-slate-400 dark:text-slate-500">
                 <span className="relative flex size-2">
