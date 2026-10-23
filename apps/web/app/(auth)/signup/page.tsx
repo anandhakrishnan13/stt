@@ -11,6 +11,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { api } from "@/lib/api";
 import { applyApiError } from "@/lib/form";
 
@@ -83,9 +84,8 @@ export default function SignupPage() {
             hint="10+ characters, letters and numbers"
             error={errors.password?.message}
           >
-            <Input
+            <PasswordInput
               id="password"
-              type="password"
               autoComplete="new-password"
               invalid={Boolean(errors.password)}
               aria-describedby="password-error"

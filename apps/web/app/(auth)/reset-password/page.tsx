@@ -12,6 +12,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { api } from "@/lib/api";
 import { applyApiError } from "@/lib/form";
 
@@ -89,18 +90,16 @@ function ResetPasswordForm() {
             hint="10+ characters, letters and numbers"
             error={errors.newPassword?.message}
           >
-            <Input
+            <PasswordInput
               id="newPassword"
-              type="password"
               autoComplete="new-password"
               invalid={Boolean(errors.newPassword)}
               {...register("newPassword")}
             />
           </FormField>
           <FormField id="confirmPassword" label="Confirm password" error={errors.confirmPassword?.message}>
-            <Input
+            <PasswordInput
               id="confirmPassword"
-              type="password"
               autoComplete="new-password"
               invalid={Boolean(errors.confirmPassword)}
               {...register("confirmPassword")}

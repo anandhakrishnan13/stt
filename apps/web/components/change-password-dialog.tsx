@@ -17,6 +17,7 @@ import {
 } from "@/components/ui/dialog";
 import { FormField } from "@/components/ui/form-field";
 import { Input } from "@/components/ui/input";
+import { PasswordInput } from "@/components/ui/password-input";
 import { api } from "@/lib/api";
 import { applyApiError } from "@/lib/form";
 import { saveCachedUser } from "@/lib/session";
@@ -162,9 +163,8 @@ export function ChangePasswordDialog({
 
             {!forgotPassword && (
               <FormField id="currentPassword" label="Current password" error={errors.currentPassword?.message}>
-                <Input
+                <PasswordInput
                   id="currentPassword"
-                  type="password"
                   autoComplete="current-password"
                   invalid={Boolean(errors.currentPassword)}
                   {...register("currentPassword")}
@@ -190,9 +190,8 @@ export function ChangePasswordDialog({
               hint="10+ characters, letters and numbers"
               error={errors.newPassword?.message}
             >
-              <Input
+              <PasswordInput
                 id="newPassword"
-                type="password"
                 autoComplete="new-password"
                 invalid={Boolean(errors.newPassword)}
                 {...register("newPassword")}

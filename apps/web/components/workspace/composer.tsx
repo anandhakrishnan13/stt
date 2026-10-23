@@ -118,12 +118,12 @@ export function Composer() {
             : "border-slate-200 dark:border-slate-800",
         )}
       >
-        {lines.length > 0 || interim ? (
+        {recording || lines.length > 0 || interim ? (
           <div
             ref={transcriptRef}
             aria-live="polite"
             aria-label="Live transcript"
-            className="max-h-40 space-y-1 overflow-y-auto px-3 pb-2 pt-1 text-sm scroll-smooth"
+            className="max-h-40 space-y-1.5 overflow-y-auto px-3 pb-2 pt-1 text-sm scroll-smooth"
           >
             {lines.map((line) => (
               <p key={line.id} className="text-slate-800 dark:text-slate-200">
@@ -131,7 +131,24 @@ export function Composer() {
               </p>
             ))}
             {interim ? (
-              <p className="text-slate-400 dark:text-slate-500">{interim}</p>
+              <p className="text-slate-500 dark:text-slate-400">
+                {interim}
+                <span className="inline-block w-1.5 h-3.5 ml-1 align-baseline bg-rose-500 dark:bg-rose-400 animate-pulse rounded-xs" />
+              </p>
+            ) : null}
+            {recording ? (
+              <div className="flex items-center gap-1.5 pt-0.5 text-xs text-slate-400 dark:text-slate-500">
+                <span className="relative flex size-2">
+                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-rose-400 opacity-75" />
+                  <span className="relative inline-flex size-2 rounded-full bg-rose-500" />
+                </span>
+                <span>{lines.length > 0 || interim ? "Listening" : "Listening… speak now"}</span>
+                <span className="inline-flex gap-0.5 ml-0.5">
+                  <span className="size-1 rounded-full bg-slate-400 animate-bounce [animation-delay:-0.3s]" />
+                  <span className="size-1 rounded-full bg-slate-400 animate-bounce [animation-delay:-0.15s]" />
+                  <span className="size-1 rounded-full bg-slate-400 animate-bounce" />
+                </span>
+              </div>
             ) : null}
           </div>
         ) : null}
