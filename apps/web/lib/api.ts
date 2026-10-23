@@ -130,7 +130,8 @@ export const api = {
   deleteTranscript: (id: string) =>
     apiRequest<void>(`/transcripts/${id}`, { method: "DELETE" }),
 
-  startRecording: (mime: string) => post<TranscriptResponse>("/transcripts", { mime }),
+  startRecording: (mime: string, engine?: "whisper" | "gemini") =>
+    post<TranscriptResponse>("/transcripts", { mime, ...(engine ? { engine } : {}) }),
   uploadChunk: (id: string, seq: number, chunk: Blob) =>
     apiRequest<{ chunkSeq: number; bytes: number }>(`/transcripts/${id}/chunks?seq=${seq}`, {
       method: "POST",

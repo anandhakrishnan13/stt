@@ -26,10 +26,6 @@ function durationOf(bytes: Buffer): number {
   return bytes.byteLength / 2 / SAMPLES_PER_MS;
 }
 
-function engineName(): "groq-whisper" | "whisper-local" {
-  return env.STT_PROVIDER === "groq" ? "groq-whisper" : "whisper-local";
-}
-
 function titleFromSpeech(text: string): string {
   const clean = text.replace(/\s+/g, " ").trim();
   return clean.length > 80 ? `${clean.slice(0, 77).trimEnd()}…` : clean;
@@ -76,6 +72,12 @@ async function runSession(socket: WebSocket, userId: string, transcriptId: strin
     return;
   }
 
+  const sttEngine =
+    row.engine === "gemini-live"
+      ? ("gemini" as const)
+      : ("groq" as const);
+  const currentEngineName =
+    row.engine ?? (sttEngine === "gemini" ? "gemini-live" : "groq-whisper");
   const [latest] = await db
     .select({ seq: max(segments.seq) })
     .from(segments)
@@ -202,7 +204,7 @@ async function runSession(socket: WebSocket, userId: string, transcriptId: strin
       await db
         .update(transcripts)
         .set({
-          engine: engineName(),
+          engine: currentEngineName,
           language: detectedLanguage,
           title: sql`case
             when ${transcripts.title} like ${"Recording · %"} then ${titleFromSpeech(text)}
@@ -250,7 +252,7 @@ async function runSession(socket: WebSocket, userId: string, transcriptId: strin
     }
 
     try {
-      const result = await transcribePcm(snapshot, context || undefined);
+      const result = await transcribePcm(snapshot, context || undefined, sttEngine);
       detectedLanguage = detectedLanguage ?? result.language;
       if (result.words.length === 0) return;
 

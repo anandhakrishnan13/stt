@@ -49,6 +49,7 @@ export type RecordingCallbacks = {
   onSegment?: (segment: SegmentDTO) => void;
   onInterim?: (text: string) => void;
   onTranscriptionError?: (message: string) => void;
+  engine?: "whisper" | "gemini";
 };
 
 export class VoiceRecorder {
@@ -105,7 +106,7 @@ export class VoiceRecorder {
     const actualMime = recorder.mimeType || mimeType || "audio/webm";
 
     try {
-      const created = await api.startRecording(actualMime);
+      const created = await api.startRecording(actualMime, callbacks.engine);
       const instance = new VoiceRecorder(stream, recorder, created.transcript.id);
       instance.attach();
       recorder.start(CHUNK_INTERVAL_MS);

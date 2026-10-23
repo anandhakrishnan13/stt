@@ -84,35 +84,3 @@ export function extractWords(
     endMs: Math.round((index + 1) * step),
   }));
 }
-
-export async function transcribePcm(
-  pcm: Uint8Array,
-  prompt?: string,
-): Promise<Transcription> {
-  const wav = pcm16ToWav(pcm);
-  const form = new FormData();
-  form.set("file", new File([wav], "window.wav", { type: "audio/wav" }));
-  form.set("response_format", "verbose_json");
-  form.set("temperature", "0");
-  form.set("language", "auto");
-  if (prompt) form.set("prompt", prompt);
-
-  const response = await fetch(`${env.WHISPER_URL.replace(/\/+$/, "")}/inference`, {
-    method: "POST",
-    body: form,
-    signal: AbortSignal.timeout(env.WHISPER_TIMEOUT_MS),
-  });
-
-  if (!response.ok) {
-    throw new Error(`Whisper returned ${response.status}`);
-  }
-
-  const payload = (await response.json()) as VerbosePayload;
-  const text = cleanTranscript(typeof payload.text === "string" ? payload.text : "");
-  const durationMs = (pcm.byteLength / 2 / SAMPLE_RATE) * 1000;
-  return {
-    text,
-    language: typeof payload.language === "string" ? payload.language.toLowerCase() : null,
-    words: extractWords(payload, text, durationMs),
-  };
-}

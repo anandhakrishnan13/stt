@@ -21,7 +21,22 @@ export function Composer() {
   const [lines, setLines] = useState<SegmentDTO[]>([]);
   const [interim, setInterim] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
+  const [model, setModel] = useState<"whisper" | "gemini">(() => {
+    if (typeof window === "undefined") return "whisper";
+    try {
+      return (localStorage.getItem("stt_model") as "whisper" | "gemini") || "whisper";
+    } catch {
+      return "whisper";
+    }
+  });
   const recorderRef = useRef<VoiceRecorder | null>(null);
+
+  function selectModel(m: "whisper" | "gemini") {
+    setModel(m);
+    try {
+      localStorage.setItem("stt_model", m);
+    } catch {}
+  }
   const transcriptRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -53,6 +68,7 @@ export function Composer() {
     setNotice(null);
     try {
       recorderRef.current = await VoiceRecorder.start({
+        engine: model,
         onSegment: (segment) => {
           setLines((current) =>
             current.some((line) => line.id === segment.id)
@@ -118,6 +134,40 @@ export function Composer() {
             : "border-slate-200 dark:border-slate-800",
         )}
       >
+        <div className="flex items-center justify-between px-3 pt-1 pb-1">
+          <div className="inline-flex items-center rounded-full bg-slate-100 p-0.5 text-[11px] font-medium dark:bg-slate-800">
+            <button
+              type="button"
+              disabled={recording}
+              onClick={() => selectModel("whisper")}
+              className={cn(
+                "rounded-full px-2.5 py-0.5 transition cursor-pointer disabled:cursor-not-allowed",
+                model === "whisper"
+                  ? "bg-white text-slate-900 shadow-xs dark:bg-slate-900 dark:text-slate-100"
+                  : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100",
+              )}
+            >
+              Whisper
+            </button>
+            <button
+              type="button"
+              disabled={recording}
+              onClick={() => selectModel("gemini")}
+              className={cn(
+                "rounded-full px-2.5 py-0.5 transition cursor-pointer disabled:cursor-not-allowed",
+                model === "gemini"
+                  ? "bg-white text-slate-900 shadow-xs dark:bg-slate-900 dark:text-slate-100"
+                  : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100",
+              )}
+            >
+              Gemini
+            </button>
+          </div>
+          <span className="text-[11px] text-slate-400 dark:text-slate-500">
+            {model === "whisper" ? "Whisper" : "Gemini"}
+          </span>
+        </div>
+
         {recording || lines.length > 0 || interim ? (
           <div
             ref={transcriptRef}

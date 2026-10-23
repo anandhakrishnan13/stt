@@ -11,6 +11,7 @@ import type { FastifyInstance, FastifyRequest } from "fastify";
 import { Readable } from "node:stream";
 import type { ReadableStream as WebReadableStream } from "node:stream/web";
 import { db } from "../db";
+import { env } from "../env";
 import { segments, transcripts, type TranscriptRow } from "../db/schema";
 import { recordAudit } from "../lib/audit";
 import { requireAuth } from "../lib/auth-guard";
@@ -193,6 +194,10 @@ export async function transcriptRoutes(app: FastifyInstance): Promise<void> {
     const userId = currentUserId(request);
     const input = parseBody(startRecordingSchema, request.body);
     const now = new Date();
+    const selectedEngine =
+      input.engine === "gemini" || env.STT_PROVIDER === "gemini"
+        ? ("gemini-live" as const)
+        : ("groq-whisper" as const);
 
     const [row] = await db
       .insert(transcripts)
@@ -200,6 +205,7 @@ export async function transcriptRoutes(app: FastifyInstance): Promise<void> {
         userId,
         title: defaultTitle(now),
         status: "recording",
+        engine: selectedEngine,
         audioMime: containerFor(input.mime).mime,
         createdAt: now,
         updatedAt: now,
