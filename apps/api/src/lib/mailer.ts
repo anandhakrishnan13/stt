@@ -53,37 +53,34 @@ function renderOtp(code: string, lead: string, minutes: number): { text: string;
   return { text, html };
 }
 
-/**
- * Fire-and-forget: SMTP to a real relay costs seconds (connect, TLS, auth,
- * DATA, QUIT), and none of it is needed to answer the HTTP request. Failures
- * are logged; the user can request a new code.
- */
-function deliver(mail: Omit<Outbound, "sentAt">): void {
+async function deliver(mail: Omit<Outbound, "sentAt">): Promise<void> {
   const transport = getTransport();
   if (!transport) {
     outbox.push({ ...mail, sentAt: new Date() });
     console.log(`[mail:console] to=${mail.to} subject="${mail.subject}"\n${mail.text}\n`);
     return;
   }
-  transport.sendMail({ from: env.SMTP_FROM, ...mail }).catch((error: unknown) => {
+  try {
+    await transport.sendMail({ from: env.SMTP_FROM, ...mail });
+  } catch (error) {
     console.error(`[mail] delivery failed to=${mail.to} subject="${mail.subject}"`, error);
-  });
+  }
 }
 
-export function sendOtpMail(
+export async function sendOtpMail(
   to: string,
   code: string,
   purpose: OtpPurpose,
   firstName: string,
-): void {
+): Promise<void> {
   const copy = PURPOSE_COPY[purpose];
   const body = renderOtp(code, `Hi ${firstName}, ${copy.lead}`, Math.round(env.OTP_TTL_SECONDS / 60));
-  deliver({ to, subject: `${copy.subject} — ${env.APP_NAME}`, ...body });
+  await deliver({ to, subject: `${copy.subject} — ${env.APP_NAME}`, ...body });
 }
 
-export function sendAccountExistsMail(to: string, firstName: string): void {
+export async function sendAccountExistsMail(to: string, firstName: string): Promise<void> {
   const text = `Hi ${firstName}, an account already exists for this address. If you forgot your password, use the reset link on the sign-in page.`;
-  deliver({
+  await deliver({
     to,
     subject: `Your ${env.APP_NAME} account`,
     text,
@@ -91,9 +88,9 @@ export function sendAccountExistsMail(to: string, firstName: string): void {
   });
 }
 
-export function sendPasswordChangedMail(to: string, firstName: string): void {
+export async function sendPasswordChangedMail(to: string, firstName: string): Promise<void> {
   const text = `Hi ${firstName}, your password was changed and all other sessions were signed out. If this was not you, reset your password immediately.`;
-  deliver({
+  await deliver({
     to,
     subject: "Your password was changed",
     text,

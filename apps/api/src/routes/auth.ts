@@ -97,7 +97,7 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
           throw error;
         });
       } else if (existing?.deletedAt === null && existing?.emailVerifiedAt) {
-        sendAccountExistsMail(existing.email, existing.firstName);
+        await sendAccountExistsMail(existing.email, existing.firstName);
       }
       // Audit is best-effort and must not delay the response.
       void recordAudit({

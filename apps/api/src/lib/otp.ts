@@ -66,7 +66,7 @@ export async function issueOtp(input: {
       ),
   ]);
 
-  sendOtpMail(input.email, code, input.purpose, input.firstName);
+  await sendOtpMail(input.email, code, input.purpose, input.firstName);
 }
 
 /**

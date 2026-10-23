@@ -90,7 +90,7 @@ export async function passwordRoutes(app: FastifyInstance): Promise<void> {
 
       // Keep the current caller signed in with a fresh token for the new tokenVersion
       await startSession(reply, updated, request);
-      sendPasswordChangedMail(user.email, user.firstName);
+      await sendPasswordChangedMail(user.email, user.firstName);
       void recordAudit({
         action: "password_changed",
         actorUserId: user.id,
@@ -167,7 +167,7 @@ export async function passwordRoutes(app: FastifyInstance): Promise<void> {
         .where(eq(users.id, user.id));
       await revokeAllForUser(user.id);
       clearAuthCookies(reply);
-      sendPasswordChangedMail(user.email, user.firstName);
+      await sendPasswordChangedMail(user.email, user.firstName);
       void recordAudit({
         action: "password_reset",
         actorUserId: user.id,
