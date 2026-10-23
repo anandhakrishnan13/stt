@@ -323,7 +323,7 @@ describe("password change and reset", () => {
       method: "POST",
       url: "/auth/password/change",
       headers: { cookie: `st_access=${accessBefore}` },
-      payload: { currentPassword: PASSWORD, code, newPassword: NEW_PASSWORD },
+      payload: { currentPassword: PASSWORD, newPassword: NEW_PASSWORD },
     });
     expect(changed.statusCode).toBe(200);
 

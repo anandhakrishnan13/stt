@@ -61,13 +61,15 @@ export async function passwordRoutes(app: FastifyInstance): Promise<void> {
         if (!(await verifyPassword(input.currentPassword, user.passwordHash))) {
           throw errors.validation({ currentPassword: "Current password is incorrect" });
         }
+      } else if (input.code) {
+        await consumeOtp({
+          email: user.email,
+          purpose: "password_change",
+          code: input.code,
+        });
+      } else {
+        throw errors.validation({ currentPassword: "Enter your current password or verification code" });
       }
-
-      await consumeOtp({
-        email: user.email,
-        purpose: "password_change",
-        code: input.code,
-      });
 
       const passwordHash = await hashPassword(input.newPassword);
       const [updated] = await db

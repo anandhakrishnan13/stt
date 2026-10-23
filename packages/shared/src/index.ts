@@ -114,9 +114,20 @@ export const resendOtpSchema = z.object({
 export const changePasswordSchema = z
   .object({
     currentPassword: z.string().max(128).optional(),
-    code: otpCodeSchema,
+    code: z
+      .string()
+      .trim()
+      .regex(/^\d{6}$/, "Enter the 6-digit code")
+      .optional(),
     newPassword: passwordSchema,
   })
+  .refine(
+    (data) => Boolean(data.currentPassword) || Boolean(data.code),
+    {
+      path: ["currentPassword"],
+      message: "Current password or verification code is required",
+    },
+  )
   .refine(
     (value) => !value.currentPassword || value.currentPassword !== value.newPassword,
     {

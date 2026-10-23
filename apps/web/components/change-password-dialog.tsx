@@ -82,10 +82,14 @@ export function ChangePasswordDialog({
       setError("currentPassword", { message: "Current password is required" });
       return;
     }
+    if (forgotPassword && (!values.code || values.code.trim().length !== 6)) {
+      setError("code", { message: "Enter the 6-digit code sent to your email" });
+      return;
+    }
     try {
       const payload: ChangePasswordInput = forgotPassword
         ? { code: values.code, newPassword: values.newPassword }
-        : values;
+        : { currentPassword: values.currentPassword, newPassword: values.newPassword };
       await api.changePassword(payload);
       setNotice("Password updated successfully.");
       reset();
@@ -106,7 +110,9 @@ export function ChangePasswordDialog({
         <DialogHeader>
           <DialogTitle>Change password</DialogTitle>
           <DialogDescription>
-            We email a 6-digit code to confirm the change. Every other session is signed out.
+            {forgotPassword
+              ? "Request a 6-digit code to verify your identity. Other sessions will be signed out."
+              : "Enter your current password and choose a new one. Other sessions will be signed out."}
           </DialogDescription>
         </DialogHeader>
 
@@ -114,21 +120,23 @@ export function ChangePasswordDialog({
           {formError ? <Alert variant="error">{formError}</Alert> : null}
           {notice ? <Alert variant="success">{notice}</Alert> : null}
 
-          <div className="flex items-center justify-between rounded-md border border-slate-200 px-3 py-2 text-sm dark:border-slate-800">
-            <span className="text-slate-600 dark:text-slate-400">
-              {codeSent ? "Code sent to your inbox" : "Step 1 · request a code"}
-            </span>
-            <Button
-              type="button"
-              size="sm"
-              variant={codeSent ? "outline" : "primary"}
-              onClick={requestCode}
-              loading={sendingCode}
-              disabled={cooldown > 0}
-            >
-              {cooldown > 0 ? `Resend in ${cooldown}s` : codeSent ? "Resend" : "Send code"}
-            </Button>
-          </div>
+          {forgotPassword && (
+            <div className="flex items-center justify-between rounded-md border border-slate-200 px-3 py-2 text-sm dark:border-slate-800">
+              <span className="text-slate-600 dark:text-slate-400">
+                {codeSent ? "Code sent to your inbox" : "Step 1 · request a code"}
+              </span>
+              <Button
+                type="button"
+                size="sm"
+                variant={codeSent ? "outline" : "primary"}
+                onClick={requestCode}
+                loading={sendingCode}
+                disabled={cooldown > 0}
+              >
+                {cooldown > 0 ? `Resend in ${cooldown}s` : codeSent ? "Resend" : "Send code"}
+              </Button>
+            </div>
+          )}
 
           <form id="change-password-form" method="post" onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
             <label className="flex items-center gap-2 text-sm text-slate-600 dark:text-slate-400 cursor-pointer select-none">
@@ -137,8 +145,15 @@ export function ChangePasswordDialog({
                 id="forgotPassword"
                 checked={forgotPassword}
                 onChange={(e) => {
-                  setForgotPassword(e.target.checked);
-                  if (e.target.checked) setValue("currentPassword", "");
+                  const checked = e.target.checked;
+                  setForgotPassword(checked);
+                  setFormError(null);
+                  if (checked) {
+                    setValue("currentPassword", "");
+                  } else {
+                    setValue("code", "");
+                    setCodeSent(false);
+                  }
                 }}
                 className="size-4 rounded border-slate-300 text-slate-900 focus:ring-slate-500 dark:border-slate-700 dark:bg-slate-900"
               />
@@ -156,17 +171,19 @@ export function ChangePasswordDialog({
                 />
               </FormField>
             )}
-            <FormField id="code" label="Email code" error={errors.code?.message}>
-              <Input
-                id="code"
-                inputMode="numeric"
-                maxLength={6}
-                placeholder="000000"
-                className="text-center tracking-[0.5em]"
-                invalid={Boolean(errors.code)}
-                {...register("code")}
-              />
-            </FormField>
+            {forgotPassword && (
+              <FormField id="code" label="Email code" error={errors.code?.message}>
+                <Input
+                  id="code"
+                  inputMode="numeric"
+                  maxLength={6}
+                  placeholder="000000"
+                  className="text-center tracking-[0.5em]"
+                  invalid={Boolean(errors.code)}
+                  {...register("code")}
+                />
+              </FormField>
+            )}
             <FormField
               id="newPassword"
               label="New password"
