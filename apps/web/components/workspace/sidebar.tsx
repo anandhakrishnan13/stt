@@ -58,7 +58,7 @@ function TranscriptRow({
         <Mic className="mr-2 size-3.5 shrink-0 text-slate-400" aria-hidden />
         <span className="truncate">{transcript.title}</span>
       </Link>
-      <div className="absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover/item:opacity-100">
+      <div className="absolute right-1 top-1/2 flex -translate-y-1/2 items-center gap-0.5 opacity-0 transition-opacity focus-within:opacity-100 group-hover/item:opacity-100 [@media(hover:none)]:opacity-100">
         <button
           type="button"
           aria-label={`Rename ${transcript.title}`}

@@ -23,11 +23,11 @@ export function Composer() {
   const [interim, setInterim] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
   const [model, setModel] = useState<"whisper" | "gemini">(() => {
-    if (typeof window === "undefined") return "whisper";
+    if (typeof window === "undefined") return "gemini";
     try {
-      return (localStorage.getItem("stt_model") as "whisper" | "gemini") || "whisper";
+      return (localStorage.getItem("stt_model") as "whisper" | "gemini") || "gemini";
     } catch {
-      return "whisper";
+      return "gemini";
     }
   });
   const recorderRef = useRef<VoiceRecorder | null>(null);
@@ -140,21 +140,8 @@ export function Composer() {
             : "border-slate-200 dark:border-slate-800",
         )}
       >
-        <div className="flex items-center justify-between px-3 pt-1 pb-1">
+        <div className="flex items-center px-3 pt-1 pb-1">
           <div className="inline-flex items-center rounded-full bg-slate-100 p-0.5 text-[11px] font-medium dark:bg-slate-800">
-            <button
-              type="button"
-              disabled={recording}
-              onClick={() => selectModel("whisper")}
-              className={cn(
-                "rounded-full px-2.5 py-0.5 transition cursor-pointer disabled:cursor-not-allowed",
-                model === "whisper"
-                  ? "bg-white text-slate-900 shadow-xs dark:bg-slate-900 dark:text-slate-100"
-                  : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100",
-              )}
-            >
-              Whisper
-            </button>
             <button
               type="button"
               disabled={recording}
@@ -168,10 +155,20 @@ export function Composer() {
             >
               Gemini
             </button>
+            <button
+              type="button"
+              disabled={recording}
+              onClick={() => selectModel("whisper")}
+              className={cn(
+                "rounded-full px-2.5 py-0.5 transition cursor-pointer disabled:cursor-not-allowed",
+                model === "whisper"
+                  ? "bg-white text-slate-900 shadow-xs dark:bg-slate-900 dark:text-slate-100"
+                  : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100",
+              )}
+            >
+              Whisper
+            </button>
           </div>
-          <span className="text-[11px] text-slate-400 dark:text-slate-500">
-            {model === "whisper" ? "Whisper" : "Gemini"}
-          </span>
         </div>
 
         {recording || lines.length > 0 || interim ? (

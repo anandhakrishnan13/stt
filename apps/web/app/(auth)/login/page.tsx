@@ -56,7 +56,7 @@ function LoginForm() {
     <Card>
       <CardHeader>
         <CardTitle>Sign in</CardTitle>
-        <CardDescription>Sign in to continue.</CardDescription>
+        <CardDescription>Welcome back.</CardDescription>
       </CardHeader>
       <form method="post" onSubmit={handleSubmit(onSubmit)} noValidate>
         <CardContent className="space-y-4">

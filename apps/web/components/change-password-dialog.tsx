@@ -112,8 +112,9 @@ export function ChangePasswordDialog({
           <DialogTitle>Change password</DialogTitle>
           <DialogDescription>
             {forgotPassword
-              ? "Request a 6-digit code to verify your identity. Other sessions will be signed out."
-              : "Enter your current password and choose a new one. Other sessions will be signed out."}
+              ? "We'll email you a 6-digit code to verify your identity."
+              : "Enter your current password and choose a new one."}
+            {" "}Other sessions will be signed out.
           </DialogDescription>
         </DialogHeader>
 
@@ -187,7 +188,7 @@ export function ChangePasswordDialog({
             <FormField
               id="newPassword"
               label="New password"
-              hint="10+ characters, letters and numbers"
+              hint="6+ characters, letters and numbers"
               error={errors.newPassword?.message}
             >
               <PasswordInput

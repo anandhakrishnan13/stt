@@ -81,7 +81,7 @@ export default function SignupPage() {
           <FormField
             id="password"
             label="Password"
-            hint="10+ characters, letters and numbers"
+            hint="6+ characters, letters and numbers"
             error={errors.password?.message}
           >
             <PasswordInput

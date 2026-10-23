@@ -50,8 +50,20 @@ export function cleanTranscript(text: string): string {
 export type VerbosePayload = {
   text?: unknown;
   language?: unknown;
-  segments?: { words?: { word?: unknown; start?: unknown; end?: unknown }[] }[];
+  segments?: {
+    words?: { word?: unknown; start?: unknown; end?: unknown }[];
+    no_speech_prob?: unknown;
+  }[];
 };
+
+/** Returns true when all segments look like hallucination (high no-speech probability). */
+export function isHallucination(payload: VerbosePayload): boolean {
+  const segs = payload.segments;
+  if (!segs || segs.length === 0) return false;
+  return segs.every(
+    (seg) => typeof seg.no_speech_prob === "number" && seg.no_speech_prob > 0.6,
+  );
+}
 
 /** Word timings let the gateway trim exactly what it committed. */
 export function extractWords(

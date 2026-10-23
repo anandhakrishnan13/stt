@@ -17,9 +17,9 @@ export const GEMINI_STT_INSTRUCTION = [
   'Examples: "kal mujhe meeting hai at five" -> kal mujhe meeting hai at five; "yaar ye report bahut accha hai" -> yaar ye report bahut accha hai.',
 ].join(" ");
 
-/** Roman-Hinglish sample fed as prior text so Whisper mirrors its script. */
+/** Roman-Hinglish sample fed as prior text so Whisper mirrors its script and suppresses hallucination. */
 export const WHISPER_STT_PROMPT =
-  "kal mujhe meeting hai at five. yaar ye report bahut accha hai.";
+  "kal mujhe meeting hai at five. yaar ye report bahut accha hai. aaj office mein presentation deni hai. thoda time do, main abhi aa raha hoon.";
 
 export function composeSttPrompt(instruction: string, context?: string): string {
   const base = instruction.trim();

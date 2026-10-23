@@ -195,7 +195,7 @@ export async function transcriptRoutes(app: FastifyInstance): Promise<void> {
     const input = parseBody(startRecordingSchema, request.body);
     const now = new Date();
     const selectedEngine =
-      input.engine === "gemini" || env.STT_PROVIDER === "gemini"
+      (input.engine ?? env.STT_PROVIDER) === "gemini"
         ? ("gemini-live" as const)
         : ("groq-whisper" as const);
 

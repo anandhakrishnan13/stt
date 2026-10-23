@@ -87,7 +87,7 @@ function ResetPasswordForm() {
           <FormField
             id="newPassword"
             label="New password"
-            hint="10+ characters, letters and numbers"
+            hint="6+ characters, letters and numbers"
             error={errors.newPassword?.message}
           >
             <PasswordInput

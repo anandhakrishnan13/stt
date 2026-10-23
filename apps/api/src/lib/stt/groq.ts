@@ -3,6 +3,7 @@ import { composeWhisperPrompt } from "./prompt";
 import {
   cleanTranscript,
   extractWords,
+  isHallucination,
   pcm16ToWav,
   SAMPLE_RATE,
   type Transcription,
@@ -52,6 +53,9 @@ export async function transcribeGroq(
   }
 
   const payload = (await response.json()) as VerbosePayload;
+  if (isHallucination(payload)) {
+    return { text: "", language: null, words: [] };
+  }
   const text = cleanTranscript(typeof payload.text === "string" ? payload.text : "");
   const durationMs = (pcm.byteLength / 2 / SAMPLE_RATE) * 1000;
   return {

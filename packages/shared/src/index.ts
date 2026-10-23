@@ -76,7 +76,7 @@ export const lastNameSchema = z
 
 export const passwordSchema = z
   .string({ error: "Password is required" })
-  .min(10, "Use at least 10 characters")
+  .min(6, "Use at least 6 characters")
   .max(128, "Use at most 128 characters")
   .refine((value) => /\p{L}/u.test(value), "Include at least one letter")
   .refine((value) => /\d/.test(value), "Include at least one number")

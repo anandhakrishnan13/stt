@@ -42,6 +42,7 @@ export async function transcribeGemini(
     ],
     generationConfig: {
       temperature: 0,
+      thinkingConfig: { thinkingBudget: 0 },
     },
   });
 
