@@ -6,6 +6,7 @@ import Link from "next/link";
 import { useParams } from "next/navigation";
 import { useEffect, useState } from "react";
 import { ApiError, api, audioUrl } from "@/lib/api";
+import { AudioPlayer } from "@/components/workspace/audio-player";
 import { ENGINE_LABEL, formatClock, formatDuration, formatTranscriptDate } from "@/lib/transcripts";
 
 type State =
@@ -97,18 +98,10 @@ export default function TranscriptPage() {
       <div className="min-h-0 flex-1 overflow-y-auto px-4 py-6 md:px-8">
         <div className="mx-auto max-w-3xl space-y-4">
           {transcript.audioAvailable ? (
-            <section
-              aria-label="Recording playback"
-              className="rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-800 dark:bg-slate-900"
-            >
-              <audio
-                controls
-                preload="metadata"
-                crossOrigin="use-credentials"
-                src={audioUrl(transcript.id)}
-                className="w-full"
-              />
-            </section>
+            <AudioPlayer
+              src={audioUrl(transcript.id)}
+              durationMs={transcript.durationMs}
+            />
           ) : null}
 
           {segments.length > 0 ? (

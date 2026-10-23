@@ -19,6 +19,7 @@ import { parseBody } from "../lib/http";
 import { appendChunk, discardStaged, readStaged, stagedBytes } from "../lib/recording-store";
 import { findOwnedTranscript } from "../lib/transcript-access";
 import { getStorage, type AudioRange } from "../lib/storage";
+import { injectWebmDuration } from "../lib/webm";
 
 const DEFAULT_LIMIT = 30;
 const MAX_LIMIT = 50;
@@ -276,7 +277,10 @@ export async function transcriptRoutes(app: FastifyInstance): Promise<void> {
 
     const container = containerFor(row.audioMime ?? "audio/webm");
     const key = `audio/${userId}/${id}.${container.extension}`;
-    const audio = await readStaged(id, row.chunkSeq);
+    let audio = await readStaged(id, row.chunkSeq);
+    if (container.extension === "webm") {
+      audio = injectWebmDuration(audio, input.durationMs);
+    }
     await storage.put({ key, contentType: container.mime, bytes: audio });
 
     const [updated] = await db
