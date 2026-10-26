@@ -1,9 +1,9 @@
 import { env } from "../../env";
 import { composeWhisperPrompt } from "./prompt";
 import {
-  cleanTranscript,
   extractWords,
   isHallucination,
+  normalizeTranscript,
   pcm16ToWav,
   SAMPLE_RATE,
   type Transcription,
@@ -56,7 +56,7 @@ export async function transcribeGroq(
   if (isHallucination(payload)) {
     return { text: "", language: null, words: [] };
   }
-  const text = cleanTranscript(typeof payload.text === "string" ? payload.text : "");
+  const text = normalizeTranscript(typeof payload.text === "string" ? payload.text : "");
   const durationMs = (pcm.byteLength / 2 / SAMPLE_RATE) * 1000;
   return {
     text,
@@ -103,7 +103,7 @@ export async function transcribeAudioBuffer(
   }
 
   const payload = (await response.json()) as VerbosePayload;
-  const text = cleanTranscript(typeof payload.text === "string" ? payload.text : "");
+  const text = normalizeTranscript(typeof payload.text === "string" ? payload.text : "");
   const durationSec = Number(payload.duration) || 0;
   return {
     text,

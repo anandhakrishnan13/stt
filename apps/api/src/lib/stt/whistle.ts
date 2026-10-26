@@ -1,8 +1,8 @@
 import { env } from "../../env";
 import { SttRateLimitError } from "./groq";
 import {
-  cleanTranscript,
   extractWords,
+  normalizeTranscript,
   pcm16ToWav,
   SAMPLE_RATE,
   type Transcription,
@@ -50,7 +50,7 @@ export async function transcribeWhistle(
       : typeof payload.transcription === "string"
         ? payload.transcription
         : "";
-  const text = cleanTranscript(rawText);
+  const text = normalizeTranscript(rawText);
   const durationMs = (pcm.byteLength / 2 / SAMPLE_RATE) * 1000;
 
   return {

@@ -59,7 +59,6 @@ export default function WorkspacePage() {
     .filter(Boolean)
     .join(" ");
   const typed = useTypewriter(committedText, recording);
-
   function selectModel(m: "gemini" | "whisper" | "whistle") {
     setModel(m);
     try {
@@ -174,7 +173,7 @@ export default function WorkspacePage() {
               {greeting()}{user ? `, ${user.firstName}` : ""}
             </h1>
             <p className="text-sm text-slate-500 dark:text-slate-400">
-              Hindi, English, or a mix of both.
+              Any language — written in Roman letters as you speak.
             </p>
           </div>
         ) : (

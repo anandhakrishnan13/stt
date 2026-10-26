@@ -1,4 +1,5 @@
 import { env } from "../../env";
+import { romanizeIndic } from "./romanize";
 
 export const SAMPLE_RATE = 16_000;
 
@@ -8,6 +9,19 @@ export type Transcription = { text: string; language: string | null; words: Word
 
 /** whisper-server expects a real WAV container, not raw PCM. */
 export function pcm16ToWav(pcm: Uint8Array, sampleRate = SAMPLE_RATE): Uint8Array {
+  if (
+    pcm.byteLength >= 12 &&
+    pcm[0] === 0x52 &&
+    pcm[1] === 0x49 &&
+    pcm[2] === 0x46 &&
+    pcm[3] === 0x46 &&
+    pcm[8] === 0x57 &&
+    pcm[9] === 0x41 &&
+    pcm[10] === 0x56 &&
+    pcm[11] === 0x45
+  ) {
+    return pcm;
+  }
   const header = Buffer.alloc(44);
   header.write("RIFF", 0, "ascii");
   header.writeUInt32LE(36 + pcm.byteLength, 4);
@@ -47,6 +61,14 @@ export function cleanTranscript(text: string): string {
     .trim();
 }
 
+/**
+ * The single normalization gate for every engine: strip non-speech markup and
+ * write Indic scripts in chat-style Latin, whatever the model returned.
+ */
+export function normalizeTranscript(text: string): string {
+  return romanizeIndic(cleanTranscript(text)).replace(/\s+/g, " ").trim();
+}
+
 export type VerbosePayload = {
   text?: unknown;
   language?: unknown;
@@ -75,7 +97,7 @@ export function extractWords(
   const words: Word[] = [];
   for (const segment of payload.segments ?? []) {
     for (const word of segment.words ?? []) {
-      const value = typeof word.word === "string" ? word.word.trim() : "";
+      const value = typeof word.word === "string" ? normalizeTranscript(word.word) : "";
       if (!value) continue;
       const start = typeof word.start === "number" ? word.start : null;
       const end = typeof word.end === "number" ? word.end : null;

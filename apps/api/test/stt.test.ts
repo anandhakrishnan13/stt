@@ -72,8 +72,9 @@ describe("stt prompts", () => {
   test("instructions survive prior-transcript context", () => {
     const prompt = composeSttPrompt(GEMINI_STT_INSTRUCTION, "kal mujhe meeting hai");
     expect(prompt.startsWith(GEMINI_STT_INSTRUCTION)).toBe(true);
-    expect(prompt).toContain("Previous transcript:\nkal mujhe meeting hai");
-    expect(prompt).toContain("Roman script");
+    expect(prompt).toContain("Reference from earlier audio");
+    expect(prompt).toContain("kal mujhe meeting hai");
+    expect(prompt).toContain("Latin letters");
   });
 
   test("omits the context section when there is no usable context", () => {
@@ -81,10 +82,9 @@ describe("stt prompts", () => {
     expect(composeSttPrompt(GEMINI_STT_INSTRUCTION, "   ")).toBe(GEMINI_STT_INSTRUCTION);
   });
 
-  test("whisper prompt keeps the style hint without chat labels", () => {
-    expect(composeWhisperPrompt("kal mujhe meeting hai", "yaar ye report accha hai")).toBe(
-      "kal mujhe meeting hai yaar ye report accha hai",
-    );
-    expect(composeWhisperPrompt("kal mujhe meeting hai", "")).toBe("kal mujhe meeting hai");
+  test("whisper prompt joins style and speech context", () => {
+    expect(composeWhisperPrompt("", "earlier words")).toBe("earlier words");
+    expect(composeWhisperPrompt("hint", "earlier words")).toBe("hint earlier words");
+    expect(composeWhisperPrompt("")).toBe("");
   });
 });

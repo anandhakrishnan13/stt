@@ -2,8 +2,8 @@ import { env, geminiApiKeys } from "../../env";
 import { SttRateLimitError } from "./groq";
 import { composeSttPrompt, GEMINI_STT_INSTRUCTION } from "./prompt";
 import {
-  cleanTranscript,
   extractWords,
+  normalizeTranscript,
   pcm16ToWav,
   SAMPLE_RATE,
   type Transcription,
@@ -84,7 +84,7 @@ export async function transcribeGemini(
       };
 
       const rawText = payload.candidates?.[0]?.content?.parts?.[0]?.text ?? "";
-      const text = cleanTranscript(rawText);
+      const text = normalizeTranscript(rawText);
       const durationMs = (pcm.byteLength / 2 / SAMPLE_RATE) * 1000;
 
       return {

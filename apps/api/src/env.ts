@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { WHISPER_STT_PROMPT } from "./lib/stt/prompt";
 
 const envSchema = z.object({
   NODE_ENV: z.enum(["development", "test", "production"]).default("development"),
@@ -61,7 +60,7 @@ const envSchema = z.object({
 
   STT_PROVIDER: z.enum(["groq", "gemini"]).default("groq"),
   STT_LANGUAGE: z.string().default(""),
-  STT_PROMPT: z.string().default(WHISPER_STT_PROMPT),
+  STT_PROMPT: z.string().default(""),
   GROQ_API_KEY: z.string().default(""),
   GROQ_BASE_URL: z.string().default("https://api.groq.com/openai/v1"),
   STT_GROQ_MODEL: z.string().default("whisper-large-v3-turbo"),
