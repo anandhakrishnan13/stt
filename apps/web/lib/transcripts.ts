@@ -40,9 +40,9 @@ export function formatDuration(durationMs: number): string {
 }
 
 export const ENGINE_LABEL: Record<NonNullable<TranscriptDTO["engine"]>, string> = {
-  "gemini-live": "Gemini",
-  "whisper-local": "Whisper",
   "groq-whisper": "Whisper",
+  "gemini-live": "Gemini",
+  "whistle": "Whistle (self deployed)",
 };
 
 export type TranscriptGroup = { label: string; items: TranscriptDTO[] };

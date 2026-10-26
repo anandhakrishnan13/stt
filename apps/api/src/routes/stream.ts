@@ -73,11 +73,13 @@ async function runSession(socket: WebSocket, userId: string, transcriptId: strin
   }
 
   const sttEngine =
-    row.engine === "gemini-live"
-      ? ("gemini" as const)
-      : ("groq" as const);
+    row.engine === "whistle"
+      ? ("whistle" as const)
+      : row.engine === "gemini-live"
+        ? ("gemini" as const)
+        : ("groq" as const);
   const currentEngineName =
-    row.engine ?? (sttEngine === "gemini" ? "gemini-live" : "groq-whisper");
+    row.engine ?? (sttEngine === "whistle" ? "whistle" : sttEngine === "gemini" ? "gemini-live" : "groq-whisper");
   const [latest] = await db
     .select({ seq: max(segments.seq) })
     .from(segments)

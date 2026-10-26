@@ -180,7 +180,7 @@ export const startRecordingSchema = z.object({
     .trim()
     .max(80, "Mime type is too long")
     .regex(AUDIO_MIME_RE, "Unsupported audio container"),
-  engine: z.enum(["groq", "gemini", "whisper"]).optional(),
+  engine: z.enum(["whisper", "gemini", "whistle", "groq"]).optional(),
 });
 
 export const finishRecordingSchema = z.object({
@@ -220,7 +220,7 @@ export type TranscriptDTO = {
   title: string;
   status: TranscriptStatus;
   language: string | null;
-  engine: "gemini-live" | "whisper-local" | "groq-whisper" | null;
+  engine: "groq-whisper" | "gemini-live" | "whistle" | null;
   durationMs: number;
   audioAvailable: boolean;
   createdAt: string;

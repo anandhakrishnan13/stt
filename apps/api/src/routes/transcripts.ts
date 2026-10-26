@@ -194,10 +194,13 @@ export async function transcriptRoutes(app: FastifyInstance): Promise<void> {
     const userId = currentUserId(request);
     const input = parseBody(startRecordingSchema, request.body);
     const now = new Date();
+    const effectiveEngine = input.engine ?? env.STT_PROVIDER;
     const selectedEngine =
-      (input.engine ?? env.STT_PROVIDER) === "gemini"
-        ? ("gemini-live" as const)
-        : ("groq-whisper" as const);
+      effectiveEngine === "whistle"
+        ? ("whistle" as const)
+        : effectiveEngine === "gemini"
+          ? ("gemini-live" as const)
+          : ("groq-whisper" as const);
 
     const [row] = await db
       .insert(transcripts)

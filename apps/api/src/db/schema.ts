@@ -106,7 +106,7 @@ export const transcripts = pgTable(
       .notNull()
       .default("ready"),
     language: text("language"),
-    engine: text("engine", { enum: ["gemini-live", "whisper-local", "groq-whisper"] }),
+    engine: text("engine", { enum: ["groq-whisper", "gemini-live", "whistle"] }),
     durationMs: integer("duration_ms").notNull().default(0),
     audioKey: text("audio_key"),
     audioMime: text("audio_mime"),

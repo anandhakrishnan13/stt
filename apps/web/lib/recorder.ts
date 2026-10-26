@@ -49,7 +49,7 @@ export type RecordingCallbacks = {
   onSegment?: (segment: SegmentDTO) => void;
   onInterim?: (text: string) => void;
   onTranscriptionError?: (message: string) => void;
-  engine?: "whisper" | "gemini";
+  engine?: "whisper" | "gemini" | "whistle";
 };
 
 export class VoiceRecorder {
