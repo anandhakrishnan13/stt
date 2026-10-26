@@ -132,6 +132,16 @@ export const api = {
 
   startRecording: (mime: string, engine?: "whisper" | "gemini" | "whistle") =>
     post<TranscriptResponse>("/transcripts", { mime, ...(engine ? { engine } : {}) }),
+  uploadAudio: (file: File, engine?: "whisper" | "gemini" | "whistle") => {
+    const params = new URLSearchParams();
+    params.set("name", file.name);
+    if (engine) params.set("engine", engine);
+    return apiRequest<TranscriptResponse>(`/transcripts/upload?${params.toString()}`, {
+      method: "POST",
+      body: file,
+      headers: { "content-type": file.type || "application/octet-stream" },
+    });
+  },
   uploadChunk: (id: string, seq: number, chunk: Blob) =>
     apiRequest<{ chunkSeq: number; bytes: number }>(`/transcripts/${id}/chunks?seq=${seq}`, {
       method: "POST",

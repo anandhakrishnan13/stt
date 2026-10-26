@@ -1,15 +1,25 @@
 "use client";
 
 import { Pause, Play, RotateCcw, Volume2, VolumeX } from "lucide-react";
-import { useRef, useState } from "react";
+import { forwardRef, useImperativeHandle, useRef, useState } from "react";
 import { formatClock } from "@/lib/transcripts";
+
+export type AudioPlayerHandle = {
+  seek: (seconds: number) => void;
+  play: () => void;
+  pause: () => void;
+};
 
 type AudioPlayerProps = {
   src: string;
   durationMs: number;
+  onTimeUpdate?: (timeSeconds: number) => void;
 };
 
-export function AudioPlayer({ src, durationMs }: AudioPlayerProps) {
+export const AudioPlayer = forwardRef<AudioPlayerHandle, AudioPlayerProps>(function AudioPlayer(
+  { src, durationMs, onTimeUpdate },
+  ref,
+) {
   const audioRef = useRef<HTMLAudioElement | null>(null);
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -36,6 +46,22 @@ export function AudioPlayer({ src, durationMs }: AudioPlayerProps) {
       audioRef.current.currentTime = newTime;
     }
   }
+
+  useImperativeHandle(ref, () => ({
+    seek: (seconds: number) => {
+      if (audioRef.current) {
+        audioRef.current.currentTime = seconds;
+        setCurrentTime(seconds);
+        onTimeUpdate?.(seconds);
+      }
+    },
+    play: () => {
+      audioRef.current?.play().catch(() => {});
+    },
+    pause: () => {
+      audioRef.current?.pause();
+    },
+  }));
 
   function cycleSpeed() {
     const next = playbackRate === 1 ? 1.5 : playbackRate === 1.5 ? 2 : 1;
@@ -78,7 +104,9 @@ export function AudioPlayer({ src, durationMs }: AudioPlayerProps) {
         }}
         onTimeUpdate={() => {
           if (audioRef.current) {
-            setCurrentTime(audioRef.current.currentTime);
+            const t = audioRef.current.currentTime;
+            setCurrentTime(t);
+            onTimeUpdate?.(t);
           }
         }}
       />
@@ -149,4 +177,4 @@ export function AudioPlayer({ src, durationMs }: AudioPlayerProps) {
       </div>
     </section>
   );
-}
+});

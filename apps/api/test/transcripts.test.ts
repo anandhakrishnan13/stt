@@ -212,4 +212,37 @@ describe("transcript history", () => {
     const [row] = await db.select().from(transcripts).where(eq(transcripts.id, id));
     expect(row?.deletedAt).toBeInstanceOf(Date);
   });
+
+  test("uploads an audio file and creates a ready transcript", async () => {
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () => {
+      return Response.json({
+        text: "Uploaded audio content transcribed successfully",
+        language: "english",
+        duration: 3.5,
+        segments: [{ words: [{ word: "Uploaded", start: 0, end: 0.5 }] }],
+      });
+    }) as unknown as typeof fetch;
+
+    try {
+      const audioBytes = Buffer.from([0x52, 0x49, 0x46, 0x46, 0x00, 0x00, 0x00, 0x00]);
+      const res = await app.inject({
+        method: "POST",
+        url: "/transcripts/upload?name=meeting-notes.wav&engine=whisper",
+        headers: {
+          cookie: ownerCookie,
+          "content-type": "audio/wav",
+        },
+        payload: audioBytes,
+      });
+
+      expect(res.statusCode).toBe(201);
+      const json = res.json() as { transcript: { id: string; title: string; status: string; engine: string } };
+      expect(json.transcript.title).toBe("meeting-notes");
+      expect(json.transcript.status).toBe("ready");
+      expect(json.transcript.engine).toBe("groq-whisper");
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });

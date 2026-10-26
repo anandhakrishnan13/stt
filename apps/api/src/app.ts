@@ -59,8 +59,14 @@ export function buildApp(options: { logger?: boolean } = {}): FastifyInstance {
   });
 
   // Raw audio chunks: one request per second while recording, so buffers stay small.
+  // Raw audio chunks & uploaded files: parsed as binary buffer up to MAX_AUDIO_BYTES
   app.addContentTypeParser(
     "application/octet-stream",
+    { parseAs: "buffer", bodyLimit: env.MAX_AUDIO_BYTES },
+    (_request, body, done) => done(null, body),
+  );
+  app.addContentTypeParser(
+    /^audio\/.+/,
     { parseAs: "buffer", bodyLimit: env.MAX_AUDIO_BYTES },
     (_request, body, done) => done(null, body),
   );

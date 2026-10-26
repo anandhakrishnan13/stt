@@ -2,14 +2,20 @@ import {
   finishRecordingSchema,
   renameTranscriptSchema,
   startRecordingSchema,
+  type SegmentDTO,
   type TranscriptDTO,
   type TranscriptListResponse,
   type TranscriptResponse,
 } from "@stt/shared";
 import { and, desc, eq, isNull, lt, or, sql } from "drizzle-orm";
 import type { FastifyInstance, FastifyRequest } from "fastify";
+import { randomUUID } from "node:crypto";
 import { Readable } from "node:stream";
 import type { ReadableStream as WebReadableStream } from "node:stream/web";
+import { transcribeAudioBuffer } from "../lib/stt/groq";
+import { transcribeGemini } from "../lib/stt/gemini";
+import { transcribeWhistle } from "../lib/stt/whistle";
+import type { Transcription } from "../lib/stt/whisper";
 import { db } from "../db";
 import { env } from "../env";
 import { segments, transcripts, type TranscriptRow } from "../db/schema";
@@ -229,6 +235,104 @@ export async function transcriptRoutes(app: FastifyInstance): Promise<void> {
     reply.code(201);
     const response: TranscriptResponse = { transcript: toDTO(row) };
     return response;
+  });
+
+  app.post("/upload", { preHandler: requireAuth }, async (request, reply) => {
+    const userId = currentUserId(request);
+    const query = request.query as Record<string, string | undefined>;
+    const body = request.body;
+    if (!(body instanceof Uint8Array) || body.byteLength === 0) {
+      throw errors.validation({ audio: "Audio file is empty" });
+    }
+
+    const rawName = query.name ? String(query.name).trim() : "";
+    const cleanTitle = rawName
+      ? rawName.replace(/\.[a-zA-Z0-9]+$/, "").trim()
+      : `Upload · ${new Date().toLocaleDateString()}`;
+    const engineParam = query.engine as "whisper" | "gemini" | "whistle" | undefined;
+    const selectedEngine =
+      engineParam === "whistle"
+        ? ("whistle" as const)
+        : engineParam === "gemini"
+          ? ("gemini-live" as const)
+          : ("groq-whisper" as const);
+
+    const contentType = (request.headers["content-type"] || "audio/wav").split(";")[0] || "audio/wav";
+    const container = containerFor(contentType);
+    const transcriptId = randomUUID();
+    const key = `audio/${userId}/${transcriptId}.${container.extension}`;
+
+    let transcription: Transcription;
+    try {
+      if (selectedEngine === "gemini-live") {
+        transcription = await transcribeGemini(body);
+      } else if (selectedEngine === "whistle") {
+        transcription = await transcribeWhistle(body);
+      } else {
+        transcription = await transcribeAudioBuffer(body, contentType, rawName || "audio.wav");
+      }
+    } catch (err) {
+      throw new Error(`Transcription failed: ${err instanceof Error ? err.message : String(err)}`);
+    }
+
+    const storage = getStorage();
+    await storage.put({ key, contentType: container.mime, bytes: body });
+
+    const lastWordEnd = transcription.words.at(-1)?.endMs ?? 0;
+    const durationMs =
+      lastWordEnd > 0
+        ? Math.round(lastWordEnd)
+        : Math.round((body.byteLength / 32_000) * 1000);
+
+    const now = new Date();
+    const [row] = await db
+      .insert(transcripts)
+      .values({
+        id: transcriptId,
+        userId,
+        title: cleanTitle || "Uploaded Audio",
+        status: "ready",
+        engine: selectedEngine,
+        language: transcription.language,
+        durationMs,
+        audioKey: key,
+        audioMime: container.mime,
+        audioBytes: body.byteLength,
+        createdAt: now,
+        updatedAt: now,
+      })
+      .returning();
+
+    if (!row) throw errors.internal();
+
+    const segmentRows: SegmentDTO[] = [];
+    if (transcription.text) {
+      const [savedSeg] = await db
+        .insert(segments)
+        .values({
+          transcriptId: row.id,
+          seq: 0,
+          text: transcription.text,
+          startMs: 0,
+          endMs: durationMs,
+        })
+        .returning();
+      if (savedSeg) {
+        segmentRows.push({
+          id: savedSeg.id,
+          seq: savedSeg.seq,
+          text: savedSeg.text,
+          startMs: savedSeg.startMs,
+          endMs: savedSeg.endMs,
+        });
+      }
+    }
+
+    reply.code(201);
+    return {
+      transcript: toDTO(row),
+      segments: segmentRows,
+    };
   });
 
   app.post("/:id/chunks", { preHandler: requireAuth }, async (request, reply) => {

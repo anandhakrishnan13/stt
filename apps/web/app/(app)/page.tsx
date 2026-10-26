@@ -1,13 +1,15 @@
 "use client";
 
 import type { SegmentDTO } from "@stt/shared";
-import { AudioLines, Loader2, Mic, Square } from "lucide-react";
+import { AudioLines, Loader2, Mic, Square, Upload } from "lucide-react";
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState } from "react";
 import { AudioWave } from "@/components/workspace/audio-wave";
+import { showToast } from "@/components/ui/toast";
+import { api } from "@/lib/api";
 import { VoiceRecorder } from "@/lib/recorder";
 import { useSession } from "@/lib/session";
-import { formatClock } from "@/lib/transcripts";
+import { formatClock, TRANSCRIPTS_CHANGED } from "@/lib/transcripts";
 import { useTypewriter } from "@/lib/use-typewriter";
 import { cn } from "@/lib/utils";
 
@@ -34,6 +36,7 @@ export default function WorkspacePage() {
   const [lines, setLines] = useState<SegmentDTO[]>([]);
   const [interim, setInterim] = useState("");
   const [notice, setNotice] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
   const [audioStream, setAudioStream] = useState<MediaStream | null>(null);
 
   const [model, setModel] = useState<"gemini" | "whisper" | "whistle">(() => {
@@ -140,6 +143,22 @@ export default function WorkspacePage() {
     setAudioStream(null);
     setState({ phase: "idle" });
     await recorder?.cancel();
+  }
+  async function handleFileUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setUploading(true);
+    setNotice("Transcribing uploaded audio…");
+    try {
+      const res = await api.uploadAudio(file, model);
+      window.dispatchEvent(new Event(TRANSCRIPTS_CHANGED));
+      showToast("Audio file transcribed successfully", "success");
+      router.push(`/t/${res.transcript.id}`);
+    } catch (err) {
+      setUploading(false);
+      setNotice(null);
+      showToast(err instanceof Error ? err.message : "Upload failed", "error");
+    }
   }
 
   return (
@@ -253,22 +272,41 @@ export default function WorkspacePage() {
 
         {/* When NOT recording: Only a clean centered Mic button */}
         {!recording ? (
-          <div className="flex flex-col items-center justify-center gap-2">
-            <button
-              type="button"
-              onClick={() => void start()}
-              disabled={busy}
-              aria-label="Start recording"
-              className="group grid size-16 place-items-center rounded-full bg-slate-900 text-white shadow-md transition hover:scale-105 hover:bg-slate-800 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white cursor-pointer"
-            >
-              {busy ? (
-                <Loader2 className="size-6 animate-spin" aria-hidden />
-              ) : (
-                <Mic className="size-6 transition group-hover:scale-110" aria-hidden />
-              )}
-            </button>
+          <div className="flex flex-col items-center justify-center gap-2.5">
+            <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => void start()}
+                disabled={busy || uploading}
+                aria-label="Start recording"
+                className="group grid size-16 place-items-center rounded-full bg-slate-900 text-white shadow-md transition hover:scale-105 hover:bg-slate-800 active:scale-95 disabled:cursor-not-allowed disabled:opacity-40 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white cursor-pointer"
+              >
+                {busy || uploading ? (
+                  <Loader2 className="size-6 animate-spin" aria-hidden />
+                ) : (
+                  <Mic className="size-6 transition group-hover:scale-110" aria-hidden />
+                )}
+              </button>
+
+              <label
+                className={cn(
+                  "grid size-12 place-items-center rounded-full border border-slate-200 bg-white text-slate-600 shadow-xs transition hover:bg-slate-50 hover:text-slate-900 dark:border-slate-800 dark:bg-slate-900 dark:text-slate-300 dark:hover:bg-slate-800 cursor-pointer",
+                  (busy || uploading) && "pointer-events-none opacity-40",
+                )}
+                title="Upload audio file (.mp3, .wav, .m4a, .webm, .ogg)"
+              >
+                <Upload className="size-5" />
+                <input
+                  type="file"
+                  accept="audio/*,.mp3,.wav,.m4a,.webm,.ogg"
+                  className="sr-only"
+                  disabled={busy || uploading}
+                  onChange={handleFileUpload}
+                />
+              </label>
+            </div>
             <p className="text-xs text-slate-400 dark:text-slate-500">
-              {notice ?? "Click to speak"}
+              {notice ?? (uploading ? "Transcribing audio file…" : "Click mic to speak or upload audio file")}
             </p>
           </div>
         ) : (

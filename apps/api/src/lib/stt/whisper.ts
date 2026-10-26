@@ -50,6 +50,7 @@ export function cleanTranscript(text: string): string {
 export type VerbosePayload = {
   text?: unknown;
   language?: unknown;
+  duration?: unknown;
   segments?: {
     words?: { word?: unknown; start?: unknown; end?: unknown }[];
     no_speech_prob?: unknown;
