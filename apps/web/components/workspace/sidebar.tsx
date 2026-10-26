@@ -5,6 +5,7 @@ import { AudioLines, Mic, Pencil, Plus, Search, Settings, Trash2 } from "lucide-
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { useState } from "react";
+import { showToast } from "@/components/ui/toast";
 import { ChangePasswordDialog } from "@/components/change-password-dialog";
 import { SettingsDialog } from "@/components/workspace/settings-dialog";
 import {
@@ -12,7 +13,7 @@ import {
   RenameTranscriptDialog,
 } from "@/components/workspace/transcript-dialogs";
 import { useSession } from "@/lib/session";
-import { displayName, groupTranscripts, initials } from "@/lib/transcripts";
+import { displayName, groupTranscripts, initials, TRANSCRIPTS_CHANGED } from "@/lib/transcripts";
 import { useTranscripts } from "@/lib/use-transcripts";
 import { cn } from "@/lib/utils";
 
@@ -96,7 +97,11 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 
   function onDeleted(id: string) {
     remove(id);
-    if (pathname === `/t/${id}`) router.replace("/");
+    window.dispatchEvent(new Event(TRANSCRIPTS_CHANGED));
+    if (pathname === `/t/${id}` || pathname.startsWith(`/t/${id}`)) {
+      showToast("Transcription doesn't exist", "info");
+      router.replace("/");
+    }
   }
 
   return (

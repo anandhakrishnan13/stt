@@ -3,11 +3,12 @@
 import type { SegmentDTO, TranscriptDTO } from "@stt/shared";
 import { ArrowLeft, AudioLines } from "lucide-react";
 import Link from "next/link";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import { useEffect, useState } from "react";
+import { showToast } from "@/components/ui/toast";
 import { ApiError, api, audioUrl } from "@/lib/api";
 import { AudioPlayer } from "@/components/workspace/audio-player";
-import { ENGINE_LABEL, formatDuration, formatTranscriptDate } from "@/lib/transcripts";
+import { ENGINE_LABEL, formatDuration, formatTranscriptDate, TRANSCRIPTS_CHANGED } from "@/lib/transcripts";
 
 type State =
   | { status: "loading" }
@@ -16,6 +17,7 @@ type State =
   | { status: "ready"; transcript: TranscriptDTO; segments: SegmentDTO[] };
 
 export default function TranscriptPage() {
+  const router = useRouter();
   const params = useParams<{ id: string }>();
   const id = params?.id ?? "";
   const [state, setState] = useState<State>({ status: "loading" });
@@ -37,16 +39,35 @@ export default function TranscriptPage() {
         }
       } catch (error) {
         if (cancelled) return;
-        setState({
-          status: error instanceof ApiError && error.status === 404 ? "missing" : "error",
-        });
+        if (error instanceof ApiError && error.status === 404) {
+          showToast("Transcription doesn't exist", "info");
+          router.replace("/");
+          return;
+        }
+        setState({ status: "error" });
       }
     })();
 
     return () => {
       cancelled = true;
     };
-  }, [id]);
+  }, [id, router]);
+
+  useEffect(() => {
+    if (!id) return;
+    const onTranscriptsChanged = async () => {
+      try {
+        await api.getTranscript(id);
+      } catch (error) {
+        if (error instanceof ApiError && error.status === 404) {
+          showToast("Transcription doesn't exist", "info");
+          router.replace("/");
+        }
+      }
+    };
+    window.addEventListener(TRANSCRIPTS_CHANGED, onTranscriptsChanged);
+    return () => window.removeEventListener(TRANSCRIPTS_CHANGED, onTranscriptsChanged);
+  }, [id, router]);
 
   if (state.status === "loading") {
     return (

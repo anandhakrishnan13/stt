@@ -138,6 +138,10 @@ export class VoiceRecorder {
     return this.transcriptId;
   }
 
+  get mediaStream(): MediaStream {
+    return this.stream;
+  }
+
   private attach(): void {
     this.recorder.addEventListener("dataavailable", (event) => {
       if (event.data.size === 0) return;
