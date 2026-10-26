@@ -9,7 +9,7 @@ import { showToast } from "@/components/ui/toast";
 import { ApiError, api, audioUrl } from "@/lib/api";
 import { AudioPlayer, type AudioPlayerHandle } from "@/components/workspace/audio-player";
 import { downloadFile, toMarkdown, toPlainText, toSrt } from "@/lib/export-transcript";
-import { ENGINE_LABEL, formatClock, formatDuration, formatTranscriptDate, TRANSCRIPTS_CHANGED } from "@/lib/transcripts";
+import { ENGINE_LABEL, formatDuration, formatTranscriptDate, TRANSCRIPTS_CHANGED } from "@/lib/transcripts";
 import { cn } from "@/lib/utils";
 
 type State =
@@ -237,51 +237,33 @@ export default function TranscriptPage() {
           ) : null}
 
           {segments.length > 0 ? (
-            <section aria-label="Transcript segments" className="space-y-2">
-              {segments.map((segment) => {
-                const currentMs = currentTime * 1000;
-                const isActive =
-                  currentMs >= segment.startMs &&
-                  currentMs <= Math.max(segment.startMs + 500, segment.endMs);
-                return (
-                  <article
-                    key={segment.id}
-                    onClick={() => {
-                      playerRef.current?.seek(segment.startMs / 1000);
-                      playerRef.current?.play();
-                    }}
-                    className={cn(
-                      "group rounded-xl p-3 transition-all cursor-pointer select-none",
-                      isActive
-                        ? "bg-slate-100 ring-1 ring-slate-300 dark:bg-slate-800/80 dark:ring-slate-700 shadow-xs"
-                        : "hover:bg-slate-50 dark:hover:bg-slate-900/60",
-                    )}
-                  >
-                    <div className="flex items-center gap-2 mb-1">
-                      <span className="text-[11px] font-medium tabular-nums text-slate-400 group-hover:text-slate-600 dark:group-hover:text-slate-300">
-                        {formatClock(segment.startMs)}
-                      </span>
-                      {isActive && (
-                        <span className="inline-flex items-center gap-1 text-[10px] font-medium text-rose-500 uppercase tracking-wider">
-                          <span className="size-1.5 rounded-full bg-rose-500 animate-pulse" />
-                          Playing
-                        </span>
-                      )}
-                    </div>
-                    <p
+            <div className="rounded-2xl border border-slate-200 bg-white p-6 sm:p-8 shadow-xs dark:border-slate-800 dark:bg-slate-900/60">
+              <p className="text-base sm:text-lg leading-relaxed text-slate-800 dark:text-slate-200">
+                {segments.map((segment) => {
+                  const currentMs = currentTime * 1000;
+                  const isActive =
+                    currentMs >= segment.startMs &&
+                    currentMs <= Math.max(segment.startMs + 500, segment.endMs);
+                  return (
+                    <span
+                      key={segment.id}
+                      onClick={() => {
+                        playerRef.current?.seek(segment.startMs / 1000);
+                        playerRef.current?.play();
+                      }}
                       className={cn(
-                        "text-base leading-relaxed transition-colors",
+                        "cursor-pointer rounded-xs px-0.5 transition-colors",
                         isActive
-                          ? "text-slate-900 font-medium dark:text-white"
-                          : "text-slate-700 dark:text-slate-300",
+                          ? "bg-rose-100 font-medium text-rose-900 dark:bg-rose-950/60 dark:text-rose-200"
+                          : "hover:bg-slate-100 dark:hover:bg-slate-800/60",
                       )}
                     >
-                      {segment.text}
-                    </p>
-                  </article>
-                );
-              })}
-            </section>
+                      {segment.text}{" "}
+                    </span>
+                  );
+                })}
+              </p>
+            </div>
           ) : (
             <div className="rounded-2xl border border-dashed border-slate-300 p-8 text-center dark:border-slate-700">
               <AudioLines className="mx-auto size-6 text-slate-400" aria-hidden />

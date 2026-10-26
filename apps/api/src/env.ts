@@ -74,7 +74,7 @@ const envSchema = z.object({
   STT_STEP_MS: z.coerce.number().int().min(500).default(1_500),
   STT_MAX_WINDOW_MS: z.coerce.number().int().min(1_000).default(3_000),
   STT_MIN_WINDOW_MS: z.coerce.number().int().min(200).default(800),
-  STT_SILENCE_RMS: z.coerce.number().int().nonnegative().default(150),
+  STT_SILENCE_RMS: z.coerce.number().int().nonnegative().default(220),
   STT_MAX_BUFFER_MS: z.coerce.number().int().min(2_000).default(60_000),
   STT_CONTEXT_CHARS: z.coerce.number().int().min(0).max(2_000).default(200),
   STT_ERROR_COOLDOWN_MS: z.coerce.number().int().nonnegative().default(5_000),

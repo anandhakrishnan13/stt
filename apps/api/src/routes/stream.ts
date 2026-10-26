@@ -258,6 +258,15 @@ async function runSession(socket: WebSocket, userId: string, transcriptId: strin
       detectedLanguage = detectedLanguage ?? result.language;
       if (result.words.length === 0) return;
 
+      // Drop identical repeated sentences on low-energy audio (Whisper silence echo loops)
+      if (
+        lastCommitted &&
+        result.text.length > 5 &&
+        result.text.trim().toLowerCase() === lastCommitted.text.trim().toLowerCase() &&
+        pcm16Rms(snapshot) < 350
+      ) {
+        return;
+      }
       const forced = final || snapshotMs >= env.STT_MAX_WINDOW_MS;
       const agreed = forced ? result.words.length : commonPrefix(previousWords, result.words);
 

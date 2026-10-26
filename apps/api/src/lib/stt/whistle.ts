@@ -5,6 +5,7 @@ import {
   normalizeTranscript,
   pcm16ToWav,
   SAMPLE_RATE,
+  SILENCE_LANGUAGES,
   type Transcription,
 } from "./whisper";
 
@@ -51,11 +52,15 @@ export async function transcribeWhistle(
         ? payload.transcription
         : "";
   const text = normalizeTranscript(rawText);
+  const lang = typeof payload.language === "string" ? payload.language.toLowerCase() : "auto";
+  if (SILENCE_LANGUAGES.has(lang) || !text) {
+    return { text: "", language: null, words: [] };
+  }
   const durationMs = (pcm.byteLength / 2 / SAMPLE_RATE) * 1000;
 
   return {
     text,
-    language: typeof payload.language === "string" ? payload.language.toLowerCase() : "auto",
+    language: lang,
     words: extractWords(payload, text, durationMs),
   };
 }

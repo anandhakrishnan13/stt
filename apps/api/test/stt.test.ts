@@ -5,7 +5,7 @@ import {
   composeWhisperPrompt,
   GEMINI_STT_INSTRUCTION,
 } from "../src/lib/stt/prompt";
-import { cleanTranscript, pcm16Rms, pcm16ToWav, type Word } from "../src/lib/stt/whisper";
+import { cleanTranscript, isHallucination, pcm16Rms, pcm16ToWav, type Word } from "../src/lib/stt/whisper";
 
 function word(text: string, startMs: number, endMs: number): Word {
   return { text, startMs, endMs };
@@ -66,6 +66,14 @@ describe("speech helpers", () => {
     expect(cleanTranscript("  [BLANK_AUDIO] (music) *cough*  Namaste  ")).toBe("Namaste");
     expect(cleanTranscript("\n\n  ")).toBe("");
   });
+
+  test("identifies Whisper silence hallucinations like Icelandic loops", () => {
+    expect(isHallucination({ text: "Það er hann til því." })).toBe(true);
+    expect(isHallucination({ text: "Thank you for watching." })).toBe(true);
+    expect(isHallucination({ text: "Random noise", language: "icelandic" })).toBe(true);
+    expect(isHallucination({ text: "ninakkenne ariyamo", language: "malayalam" })).toBe(false);
+    expect(isHallucination({ text: "Hello, how are you?", language: "english" })).toBe(false);
+  });
 });
 
 describe("stt prompts", () => {
@@ -74,7 +82,7 @@ describe("stt prompts", () => {
     expect(prompt.startsWith(GEMINI_STT_INSTRUCTION)).toBe(true);
     expect(prompt).toContain("Reference from earlier audio");
     expect(prompt).toContain("kal mujhe meeting hai");
-    expect(prompt).toContain("Latin letters");
+    expect(prompt).toContain("Latin alphabet");
   });
 
   test("omits the context section when there is no usable context", () => {

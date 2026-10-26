@@ -61,12 +61,36 @@ export function cleanTranscript(text: string): string {
     .trim();
 }
 
+export const SILENCE_LANGUAGES = new Set(["icelandic", "is", "welsh", "cy", "latin", "la"]);
+
+export const PHANTOM_PATTERNS = [
+  /það er hann/i,
+  /thadh er hann/i,
+  /til því/i,
+  /subtitles by/i,
+  /amara\.org/i,
+  /thank you for watching/i,
+  /thanks for watching/i,
+  /subscribe to/i,
+  /watching!/i,
+];
+
+export function isPhantomPhrase(text: string): boolean {
+  if (!text) return true;
+  if (PHANTOM_PATTERNS.some((pattern) => pattern.test(text))) return true;
+  if (/(.+?)(?:\s+\1){2,}/i.test(text)) return true;
+  return false;
+}
+
 /**
- * The single normalization gate for every engine: strip non-speech markup and
- * write Indic scripts in chat-style Latin, whatever the model returned.
+ * The single normalization gate for every engine: strip non-speech markup,
+ * reject phantom silence loops across all engines, and write Indic scripts in
+ * chat-style Latin, whatever the model returned.
  */
 export function normalizeTranscript(text: string): string {
-  return romanizeIndic(cleanTranscript(text)).replace(/\s+/g, " ").trim();
+  const cleaned = cleanTranscript(text);
+  if (isPhantomPhrase(cleaned)) return "";
+  return romanizeIndic(cleaned).replace(/\s+/g, " ").trim();
 }
 
 export type VerbosePayload = {
@@ -76,18 +100,33 @@ export type VerbosePayload = {
   segments?: {
     words?: { word?: unknown; start?: unknown; end?: unknown }[];
     no_speech_prob?: unknown;
+    avg_logprob?: unknown;
+    compression_ratio?: unknown;
   }[];
 };
 
-/** Returns true when all segments look like hallucination (high no-speech probability). */
+/** Returns true when the transcription looks like silence hallucination or a repetition loop. */
 export function isHallucination(payload: VerbosePayload): boolean {
+  const text = typeof payload.text === "string" ? payload.text.trim() : "";
+  if (!text || isPhantomPhrase(text)) return true;
+
+  const lang = typeof payload.language === "string" ? payload.language.toLowerCase() : "";
+  if (SILENCE_LANGUAGES.has(lang)) return true;
   const segs = payload.segments;
   if (!segs || segs.length === 0) return false;
-  return segs.every(
-    (seg) => typeof seg.no_speech_prob === "number" && seg.no_speech_prob > 0.6,
-  );
-}
 
+  const avgNoSpeech =
+    segs.reduce((sum, s) => sum + (typeof s.no_speech_prob === "number" ? s.no_speech_prob : 0), 0) /
+    segs.length;
+  if (avgNoSpeech > 0.45) return true;
+
+  const lowConfidence = segs.some(
+    (s) => typeof s.avg_logprob === "number" && s.avg_logprob < -0.9,
+  );
+  if (lowConfidence && avgNoSpeech > 0.3) return true;
+
+  return false;
+}
 /** Word timings let the gateway trim exactly what it committed. */
 export function extractWords(
   payload: VerbosePayload,

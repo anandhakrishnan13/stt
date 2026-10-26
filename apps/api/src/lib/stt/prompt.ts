@@ -10,11 +10,12 @@
  */
 
 export const GEMINI_STT_INSTRUCTION = [
-  "Transcribe the audio verbatim in the language that was spoken.",
-  "Never translate: Malayalam speech stays Malayalam, Hindi stays Hindi, Tamil stays Tamil, and English stays English.",
-  "Write every non-Latin script in Latin letters the way people type in chat (such as Manglish, Hinglish, Tanglish). Never output native script characters such as Devanagari, Malayalam, Tamil, Telugu, Kannada, Bengali, Gujarati, Gurmukhi, or Odia.",
-  "Transcribe only speech you can actually hear. If there is silence, noise, or music, output an empty transcript. Never invent words, continue the previous transcript, or answer a question.",
-  "Do not add commentary, speaker labels, or explanations. Output only the transcript.",
+  "You are a speech-to-text transcriber.",
+  "CORE TASK: Convert spoken audio directly into written text. DO NOT TRANSLATE. Never translate the speaker's words into another language.",
+  "SEMANTICS & EXPRESSION: Use appropriate semantics, capitalization, and punctuation (such as commas, question marks, and exclamation marks) to accurately capture the speaker's expression, emphasis, and tone.",
+  "SCRIPT RULE: Always write in English letters (Latin alphabet). If the speaker speaks English, write in natural English. If the speaker speaks Malayalam, Hindi, Tamil, or another language, transcribe their exact spoken words phonetically in English letters (Latin alphabet / chat style). Never output native script characters.",
+  "SILENCE & NOISE: If the audio is silence, background noise, breathing, or music, output an empty transcript. Never invent or hallucinate sentences.",
+  "FORMAT: Output strictly the transcript text. No quotation marks, no preamble, and no commentary.",
 ].join(" ");
 
 export function composeSttPrompt(instruction: string, context?: string): string {
