@@ -63,7 +63,10 @@ export default function TranscriptPage() {
   }
 
   useEffect(() => {
-    if (!id) return;
+    if (!id || id === "new" || id === "undefined") {
+      router.replace("/");
+      return;
+    }
     let cancelled = false;
     setState({ status: "loading" });
 
@@ -80,7 +83,6 @@ export default function TranscriptPage() {
       } catch (error) {
         if (cancelled) return;
         if (error instanceof ApiError && error.status === 404) {
-          showToast("Transcription doesn't exist", "info");
           router.replace("/");
           return;
         }
@@ -100,7 +102,6 @@ export default function TranscriptPage() {
         await api.getTranscript(id);
       } catch (error) {
         if (error instanceof ApiError && error.status === 404) {
-          showToast("Transcription doesn't exist", "info");
           router.replace("/");
         }
       }

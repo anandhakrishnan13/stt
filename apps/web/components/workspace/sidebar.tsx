@@ -98,20 +98,24 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
   function onDeleted(id: string) {
     remove(id);
     window.dispatchEvent(new Event(TRANSCRIPTS_CHANGED));
+    showToast("Transcript deleted", "info");
     if (pathname === `/t/${id}` || pathname.startsWith(`/t/${id}`)) {
-      showToast("Transcription doesn't exist", "info");
       router.replace("/");
     }
   }
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col border-r border-slate-200 bg-slate-100/80 dark:border-slate-800 dark:bg-slate-900/70">
-      <div className="flex items-center gap-2 px-3 py-3">
+      <Link
+        href="/"
+        onClick={onNavigate}
+        className="flex items-center gap-2 px-3 py-3 transition hover:opacity-80"
+      >
         <span className="grid size-8 shrink-0 place-items-center rounded-lg bg-slate-900 text-white dark:bg-slate-100 dark:text-slate-900">
           <AudioLines className="size-4" aria-hidden />
         </span>
         <span className="truncate text-sm font-semibold tracking-tight">Speech to Text</span>
-      </div>
+      </Link>
 
       <div className="px-2">
         <Link

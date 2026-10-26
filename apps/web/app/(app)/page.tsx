@@ -125,7 +125,11 @@ export default function WorkspacePage() {
       const result = await recorder.stop();
       recorderRef.current = null;
       setAudioStream(null);
-      window.location.href = `/t/${result.id}`;
+      if (lines.length === 0 && !interim) {
+        setState({ phase: "idle" });
+        return;
+      }
+      router.push(`/t/${result.id}`);
     } catch (error) {
       recorderRef.current = null;
       setAudioStream(null);
