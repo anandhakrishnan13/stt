@@ -377,7 +377,12 @@ export async function transcriptRoutes(app: FastifyInstance): Promise<void> {
     const bytes = await stagedBytes(id);
     const storage = getStorage();
 
-    if (bytes === 0) {
+    const [hasSegments] = await db
+      .select({ count: sql<number>`count(*)`.mapWith(Number) })
+      .from(segments)
+      .where(eq(segments.transcriptId, id));
+
+    if (bytes === 0 && (hasSegments?.count ?? 0) === 0) {
       await discardStaged(id);
       const [failed] = await db
         .update(transcripts)
@@ -386,6 +391,21 @@ export async function transcriptRoutes(app: FastifyInstance): Promise<void> {
         .returning();
       const response: TranscriptResponse = { transcript: toDTO(failed ?? row) };
       return response;
+    }
+
+    if (bytes === 0) {
+      // Has segments but no audio chunks: mark ready with duration
+      const [readyRow] = await db
+        .update(transcripts)
+        .set({
+          status: "ready",
+          durationMs: input.durationMs,
+          endedAt: new Date(),
+          updatedAt: new Date(),
+        })
+        .where(eq(transcripts.id, id))
+        .returning();
+      return { transcript: toDTO(readyRow ?? row) };
     }
 
     const container = containerFor(row.audioMime ?? "audio/webm");

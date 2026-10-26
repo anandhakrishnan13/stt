@@ -180,7 +180,20 @@ export class VoiceRecorder {
     }
     this.stopped = true;
     const { promise, resolve } = Promise.withResolvers<void>();
-    this.recorder.addEventListener("stop", () => resolve(), { once: true });
+
+    try {
+      if (this.recorder.state === "recording") {
+        this.recorder.requestData();
+      }
+    } catch {}
+
+    this.recorder.addEventListener(
+      "stop",
+      () => {
+        setTimeout(resolve, 60);
+      },
+      { once: true },
+    );
     this.recorder.stop();
     return promise;
   }
@@ -194,9 +207,10 @@ export class VoiceRecorder {
     await this.stopRecorder();
     await this.uploadChain;
     this.releaseStream();
-    await this.live?.stop();
-    this.live = null;
 
+    // Do not block audio finalization on the live socket flush
+    const livePromise = this.live?.stop().catch(() => {});
+    this.live = null;
     if (this.uploadFailure) {
       await api.abortRecording(this.transcriptId).catch(() => {});
       throw this.uploadFailure;

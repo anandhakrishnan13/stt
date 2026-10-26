@@ -5,7 +5,7 @@ const API_URL =
   process.env.NEXT_PUBLIC_API_URL ??
   (process.env.NODE_ENV === "production" ? "" : "http://localhost:3001");
 const STOP_TIMEOUT_MS =
-  Number(process.env.NEXT_PUBLIC_STT_STOP_TIMEOUT_MS) || 8_000;
+  Number(process.env.NEXT_PUBLIC_STT_STOP_TIMEOUT_MS) || 2_000;
 const RECONNECT_DELAYS_MS = (process.env.NEXT_PUBLIC_STT_RECONNECT_DELAYS_MS ??
   "500,1000,2000,5000")
   .split(",")

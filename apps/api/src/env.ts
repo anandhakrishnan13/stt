@@ -67,7 +67,7 @@ const envSchema = z.object({
   STT_GROQ_MODEL: z.string().default("whisper-large-v3-turbo"),
   GROQ_TIMEOUT_MS: z.coerce.number().int().positive().default(20_000),
   GEMINI_API_KEY: z.string().default(""),
-  STT_GEMINI_MODEL: z.string().default("gemini-2.5-flash-lite"),
+  STT_GEMINI_MODEL: z.string().default("gemini-2.5-flash"),
   GEMINI_TIMEOUT_MS: z.coerce.number().int().positive().default(20_000),
   WHISTLE_URL: z.string().default("https://whistle.heureux.tech/transcribe"),
   WHISTLE_API_KEY: z.string().default(""),

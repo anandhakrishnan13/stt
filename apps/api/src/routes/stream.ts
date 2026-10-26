@@ -254,7 +254,16 @@ async function runSession(socket: WebSocket, userId: string, transcriptId: strin
     }
 
     try {
-      const result = await transcribePcm(snapshot, context || undefined, sttEngine);
+      let result;
+      try {
+        result = await transcribePcm(snapshot, context || undefined, sttEngine);
+      } catch (engineErr) {
+        if (sttEngine !== "groq") {
+          result = await transcribePcm(snapshot, context || undefined, "groq");
+        } else {
+          throw engineErr;
+        }
+      }
       detectedLanguage = detectedLanguage ?? result.language;
       if (result.words.length === 0) return;
 

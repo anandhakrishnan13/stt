@@ -94,7 +94,7 @@ export default function TranscriptPage() {
   }, [id, router]);
 
   useEffect(() => {
-    if (!id) return;
+    if (!id || state.status !== "ready") return;
     const onTranscriptsChanged = async () => {
       try {
         await api.getTranscript(id);
@@ -107,7 +107,7 @@ export default function TranscriptPage() {
     };
     window.addEventListener(TRANSCRIPTS_CHANGED, onTranscriptsChanged);
     return () => window.removeEventListener(TRANSCRIPTS_CHANGED, onTranscriptsChanged);
-  }, [id, router]);
+  }, [id, state.status, router]);
 
   if (state.status === "loading") {
     return (

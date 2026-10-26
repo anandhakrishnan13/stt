@@ -40,11 +40,11 @@ export default function WorkspacePage() {
   const [audioStream, setAudioStream] = useState<MediaStream | null>(null);
 
   const [model, setModel] = useState<"gemini" | "whisper" | "whistle">(() => {
-    if (typeof window === "undefined") return "gemini";
+    if (typeof window === "undefined") return "whisper";
     try {
-      return (localStorage.getItem("stt_model") as "gemini" | "whisper" | "whistle") || "gemini";
+      return (localStorage.getItem("stt_model") as "gemini" | "whisper" | "whistle") || "whisper";
     } catch {
-      return "gemini";
+      return "whisper";
     }
   });
 
@@ -126,7 +126,7 @@ export default function WorkspacePage() {
       const result = await recorder.stop();
       recorderRef.current = null;
       setAudioStream(null);
-      router.push(`/t/${result.id}`);
+      window.location.href = `/t/${result.id}`;
     } catch (error) {
       recorderRef.current = null;
       setAudioStream(null);
