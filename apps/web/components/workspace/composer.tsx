@@ -145,19 +145,6 @@ export function Composer() {
             <button
               type="button"
               disabled={recording}
-              onClick={() => selectModel("whisper")}
-              className={cn(
-                "rounded-full px-2.5 py-0.5 transition cursor-pointer disabled:cursor-not-allowed",
-                model === "whisper"
-                  ? "bg-white text-slate-900 shadow-xs dark:bg-slate-900 dark:text-slate-100"
-                  : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100",
-              )}
-            >
-              Whisper
-            </button>
-            <button
-              type="button"
-              disabled={recording}
               onClick={() => selectModel("gemini")}
               className={cn(
                 "rounded-full px-2.5 py-0.5 transition cursor-pointer disabled:cursor-not-allowed",
@@ -167,6 +154,19 @@ export function Composer() {
               )}
             >
               Gemini
+            </button>
+            <button
+              type="button"
+              disabled={recording}
+              onClick={() => selectModel("whisper")}
+              className={cn(
+                "rounded-full px-2.5 py-0.5 transition cursor-pointer disabled:cursor-not-allowed",
+                model === "whisper"
+                  ? "bg-white text-slate-900 shadow-xs dark:bg-slate-900 dark:text-slate-100"
+                  : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100",
+              )}
+            >
+              Whisper
             </button>
             <button
               type="button"
@@ -183,7 +183,7 @@ export function Composer() {
             </button>
           </div>
           <span className="text-[11px] text-slate-400 dark:text-slate-500">
-            {model === "whistle" ? "Whistle (self deployed)" : model === "whisper" ? "Whisper" : "Gemini"}
+            {model === "gemini" ? "Gemini" : model === "whisper" ? "Whisper" : "Whistle (self deployed)"}
           </span>
         </div>
 
