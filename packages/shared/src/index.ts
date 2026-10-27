@@ -18,6 +18,8 @@ export const ErrorCode = {
   CSRF_ORIGIN: "CSRF_ORIGIN",
   NOT_FOUND: "NOT_FOUND",
   STATE_CONFLICT: "STATE_CONFLICT",
+  PAYLOAD_TOO_LARGE: "PAYLOAD_TOO_LARGE",
+  UNSUPPORTED_MEDIA_TYPE: "UNSUPPORTED_MEDIA_TYPE",
   RATE_LIMITED: "RATE_LIMITED",
   INTERNAL: "INTERNAL",
 } as const;
@@ -180,7 +182,7 @@ export const startRecordingSchema = z.object({
     .trim()
     .max(80, "Mime type is too long")
     .regex(AUDIO_MIME_RE, "Unsupported audio container"),
-  engine: z.enum(["whisper", "gemini", "whistle", "groq"]).optional(),
+  engine: z.enum(["whisper", "gemini", "whistle"]).optional(),
 });
 
 export const finishRecordingSchema = z.object({

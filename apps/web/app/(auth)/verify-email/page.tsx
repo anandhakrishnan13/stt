@@ -48,7 +48,7 @@ function VerifyEmailForm() {
     try {
       const res = await api.verifyEmail(values);
       saveCachedUser(res.user);
-      window.location.href = "/";
+      window.location.href = "/new";
     } catch (error) {
       setFormError(applyApiError(error, setError));
     }

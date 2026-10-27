@@ -23,13 +23,18 @@ import { recordAudit } from "../lib/audit";
 import { requireAuth } from "../lib/auth-guard";
 import { errors } from "../lib/errors";
 import { parseBody } from "../lib/http";
-import { appendChunk, discardStaged, readStaged, stagedBytes } from "../lib/recording-store";
+import { limits } from "../lib/limits";
+import { appendChunk, discardStaged, readStaged } from "../lib/recording-store";
 import { findOwnedTranscript } from "../lib/transcript-access";
 import { getStorage, type AudioRange } from "../lib/storage";
 import { injectWebmDuration } from "../lib/webm";
 
 const DEFAULT_LIMIT = 30;
 const MAX_LIMIT = 50;
+const DB_ENGINE_MAP: Record<string, "whistle" | "gemini-live" | "groq-whisper"> = {
+  whistle: "whistle",
+  gemini: "gemini-live",
+};
 
 function currentUserId(request: FastifyRequest): string {
   if (!request.user) throw errors.unauthenticated();
@@ -67,11 +72,33 @@ function escapeLike(value: string): string {
   return value.replace(/[\\%_]/g, (char) => `\\${char}`);
 }
 
-function containerFor(mime: string): { mime: string; extension: "webm" | "m4a" | "ogg" } {
+export type AudioContainer = {
+  mime: string;
+  extension: "webm" | "m4a" | "ogg" | "wav" | "mp3";
+};
+
+export function containerFor(mime: string): AudioContainer | null {
   const base = mime.split(";")[0]?.trim().toLowerCase() ?? "";
-  if (base === "audio/mp4") return { mime: "audio/mp4", extension: "m4a" };
-  if (base === "audio/ogg") return { mime: "audio/ogg", extension: "ogg" };
-  return { mime: "audio/webm", extension: "webm" };
+  switch (base) {
+    case "audio/wav":
+    case "audio/x-wav":
+    case "audio/wave":
+      return { mime: "audio/wav", extension: "wav" };
+    case "audio/mpeg":
+    case "audio/mp3":
+      return { mime: "audio/mpeg", extension: "mp3" };
+    case "audio/mp4":
+    case "audio/x-m4a":
+    case "audio/m4a":
+      return { mime: "audio/mp4", extension: "m4a" };
+    case "audio/ogg":
+    case "audio/opus":
+      return { mime: "audio/ogg", extension: "ogg" };
+    case "audio/webm":
+      return { mime: "audio/webm", extension: "webm" };
+    default:
+      return null;
+  }
 }
 
 function defaultTitle(now: Date): string {
@@ -111,29 +138,13 @@ function parseRange(header: string | undefined, size: number): AudioRange | null
   return { start, end };
 }
 
-/** Chunk requests for one recording must be applied strictly in order. */
-const chunkChains = new Map<string, Promise<unknown>>();
-
-async function serializeChunk<T>(transcriptId: string, task: () => Promise<T>): Promise<T> {
-  const previous = chunkChains.get(transcriptId) ?? Promise.resolve();
-  const next = previous.then(task, task);
-  chunkChains.set(
-    transcriptId,
-    next.catch(() => {}),
-  );
-  try {
-    return await next;
-  } finally {
-    if (chunkChains.get(transcriptId) === next) chunkChains.delete(transcriptId);
-  }
-}
 
 export async function transcriptRoutes(app: FastifyInstance): Promise<void> {
   app.get("/", { preHandler: requireAuth }, async (request) => {
     const query = request.query as Record<string, unknown>;
     const userId = currentUserId(request);
 
-    const search = typeof query.q === "string" ? query.q.trim() : "";
+    const search = (typeof query.q === "string" ? query.q.trim() : "").slice(0, 100);
     const rawLimit = typeof query.limit === "string" ? Number(query.limit) : DEFAULT_LIMIT;
     if (!Number.isInteger(rawLimit) || rawLimit < 1 || rawLimit > MAX_LIMIT) {
       throw errors.validation({ limit: `Use a limit between 1 and ${MAX_LIMIT}` });
@@ -196,17 +207,12 @@ export async function transcriptRoutes(app: FastifyInstance): Promise<void> {
     return response;
   });
 
-  app.post("/", { preHandler: requireAuth }, async (request, reply) => {
+  app.post("/", { preHandler: requireAuth, config: { rateLimit: limits.recordStart } }, async (request, reply) => {
     const userId = currentUserId(request);
     const input = parseBody(startRecordingSchema, request.body);
     const now = new Date();
     const effectiveEngine = input.engine ?? env.STT_PROVIDER;
-    const selectedEngine =
-      effectiveEngine === "whistle"
-        ? ("whistle" as const)
-        : effectiveEngine === "gemini"
-          ? ("gemini-live" as const)
-          : ("groq-whisper" as const);
+    const selectedEngine = DB_ENGINE_MAP[effectiveEngine] ?? "groq-whisper";
 
     const [row] = await db
       .insert(transcripts)
@@ -215,7 +221,7 @@ export async function transcriptRoutes(app: FastifyInstance): Promise<void> {
         title: defaultTitle(now),
         status: "recording",
         engine: selectedEngine,
-        audioMime: containerFor(input.mime).mime,
+        audioMime: (containerFor(input.mime) ?? { mime: "audio/webm" }).mime,
         createdAt: now,
         updatedAt: now,
       })
@@ -237,7 +243,7 @@ export async function transcriptRoutes(app: FastifyInstance): Promise<void> {
     return response;
   });
 
-  app.post("/upload", { preHandler: requireAuth }, async (request, reply) => {
+  app.post("/upload", { preHandler: requireAuth, config: { rateLimit: limits.upload } }, async (request, reply) => {
     const userId = currentUserId(request);
     const query = request.query as Record<string, string | undefined>;
     const body = request.body;
@@ -249,83 +255,94 @@ export async function transcriptRoutes(app: FastifyInstance): Promise<void> {
     const cleanTitle = rawName
       ? rawName.replace(/\.[a-zA-Z0-9]+$/, "").trim()
       : `Upload · ${new Date().toLocaleDateString()}`;
-    const engineParam = query.engine as "whisper" | "gemini" | "whistle" | undefined;
-    const selectedEngine =
-      engineParam === "whistle"
-        ? ("whistle" as const)
-        : engineParam === "gemini"
-          ? ("gemini-live" as const)
-          : ("groq-whisper" as const);
+    const selectedEngine = DB_ENGINE_MAP[query.engine ? String(query.engine) : ""] ?? "groq-whisper";
 
-    const contentType = (request.headers["content-type"] || "audio/wav").split(";")[0] || "audio/wav";
+    const contentType = (request.headers["content-type"] || "audio/wav").split(";")[0]?.trim() || "audio/wav";
     const container = containerFor(contentType);
+    if (!container) {
+      throw errors.unsupportedMediaType(`Audio format ${contentType} is not supported`);
+    }
     const transcriptId = randomUUID();
     const key = `audio/${userId}/${transcriptId}.${container.extension}`;
 
     let transcription: Transcription;
     try {
-      if (selectedEngine === "gemini-live") {
-        transcription = await transcribeGemini(body);
-      } else if (selectedEngine === "whistle") {
-        transcription = await transcribeWhistle(body);
-      } else {
-        transcription = await transcribeAudioBuffer(body, contentType, rawName || "audio.wav");
+      switch (selectedEngine) {
+        case "gemini-live":
+          transcription = await transcribeGemini(body, undefined, container.mime);
+          break;
+        case "whistle":
+          transcription = await transcribeWhistle(
+            body,
+            undefined,
+            rawName || `audio.${container.extension}`,
+            container.mime,
+          );
+          break;
+        default:
+          transcription = await transcribeAudioBuffer(body, contentType, rawName || `audio.${container.extension}`);
+          break;
       }
     } catch (err) {
       throw new Error(`Transcription failed: ${err instanceof Error ? err.message : String(err)}`);
     }
 
-    const storage = getStorage();
-    await storage.put({ key, contentType: container.mime, bytes: body });
-
     const lastWordEnd = transcription.words.at(-1)?.endMs ?? 0;
-    const durationMs =
-      lastWordEnd > 0
-        ? Math.round(lastWordEnd)
-        : Math.round((body.byteLength / 32_000) * 1000);
+    const durationMs = lastWordEnd > 0 ? Math.round(lastWordEnd) : 0;
 
     const now = new Date();
-    const [row] = await db
-      .insert(transcripts)
-      .values({
-        id: transcriptId,
-        userId,
-        title: cleanTitle || "Uploaded Audio",
-        status: "ready",
-        engine: selectedEngine,
-        language: transcription.language,
-        durationMs,
-        audioKey: key,
-        audioMime: container.mime,
-        audioBytes: body.byteLength,
-        createdAt: now,
-        updatedAt: now,
-      })
-      .returning();
-
-    if (!row) throw errors.internal();
-
-    const segmentRows: SegmentDTO[] = [];
-    if (transcription.text) {
-      const [savedSeg] = await db
-        .insert(segments)
+    const [row, segmentRows] = await db.transaction(async (tx) => {
+      const [newRow] = await tx
+        .insert(transcripts)
         .values({
-          transcriptId: row.id,
-          seq: 0,
-          text: transcription.text,
-          startMs: 0,
-          endMs: durationMs,
+          id: transcriptId,
+          userId,
+          title: cleanTitle || "Uploaded Audio",
+          status: "ready",
+          engine: selectedEngine,
+          language: transcription.language,
+          durationMs,
+          audioKey: key,
+          audioMime: container.mime,
+          audioBytes: body.byteLength,
+          createdAt: now,
+          updatedAt: now,
         })
         .returning();
-      if (savedSeg) {
-        segmentRows.push({
-          id: savedSeg.id,
-          seq: savedSeg.seq,
-          text: savedSeg.text,
-          startMs: savedSeg.startMs,
-          endMs: savedSeg.endMs,
-        });
+
+      if (!newRow) throw errors.internal();
+
+      const segs: SegmentDTO[] = [];
+      if (transcription.text) {
+        const [savedSeg] = await tx
+          .insert(segments)
+          .values({
+            transcriptId: newRow.id,
+            seq: 0,
+            text: transcription.text,
+            startMs: 0,
+            endMs: durationMs,
+          })
+          .returning();
+        if (savedSeg) {
+          segs.push({
+            id: savedSeg.id,
+            seq: savedSeg.seq,
+            text: savedSeg.text,
+            startMs: savedSeg.startMs,
+            endMs: savedSeg.endMs,
+          });
+        }
       }
+      return [newRow, segs] as const;
+    });
+
+    const storage = getStorage();
+    try {
+      await storage.put({ key, contentType: container.mime, bytes: body });
+    } catch (storageErr) {
+      await db.delete(transcripts).where(eq(transcripts.id, transcriptId)).catch(() => {});
+      throw storageErr;
     }
 
     reply.code(201);
@@ -335,31 +352,30 @@ export async function transcriptRoutes(app: FastifyInstance): Promise<void> {
     };
   });
 
-  app.post("/:id/chunks", { preHandler: requireAuth }, async (request, reply) => {
-    const { id } = request.params as { id: string };
-    const userId = currentUserId(request);
-    const query = request.query as Record<string, unknown>;
-    const seq = Number(query.seq);
-    if (!Number.isInteger(seq) || seq < 0) {
-      throw errors.validation({ seq: "seq must be a non-negative integer" });
-    }
+  app.post(
+    "/:id/chunks",
+    { preHandler: requireAuth, bodyLimit: env.MAX_CHUNK_BYTES },
+    async (request, reply) => {
+      const { id } = request.params as { id: string };
+      const userId = currentUserId(request);
+      const query = request.query as Record<string, unknown>;
+      const seq = Number(query.seq);
+      if (!Number.isInteger(seq) || seq < 0) {
+        throw errors.validation({ seq: "seq must be a non-negative integer" });
+      }
 
-    const body = request.body;
-    if (!(body instanceof Uint8Array) || body.byteLength === 0) {
-      throw errors.validation({ body: "Chunk body is empty" });
-    }
+      const body = request.body;
+      if (!(body instanceof Uint8Array) || body.byteLength === 0) {
+        throw errors.validation({ body: "Chunk body is empty" });
+      }
 
-    return serializeChunk(id, async () => {
-      const row = await findOwnedTranscript(userId, id);
-      if (row.status !== "recording") throw errors.stateConflict("Recording is no longer active");
-
-      const result = await appendChunk(id, seq, body);
+      const result = await appendChunk(id, userId, seq, body);
       if (result.duplicate) return reply.code(204).send();
 
       reply.code(202);
       return { chunkSeq: result.chunkSeq, bytes: result.bytes };
-    });
-  });
+    },
+  );
 
   app.post("/:id/finish", { preHandler: requireAuth }, async (request) => {
     const { id } = request.params as { id: string };
@@ -374,15 +390,17 @@ export async function transcriptRoutes(app: FastifyInstance): Promise<void> {
     }
     if (row.status !== "recording") throw errors.stateConflict("Recording is not active");
 
-    const bytes = await stagedBytes(id);
+    const bytes = row.audioBytes;
     const storage = getStorage();
 
-    const [hasSegments] = await db
-      .select({ count: sql<number>`count(*)`.mapWith(Number) })
+    const [hasSegment] = await db
+      .select({ id: segments.id })
       .from(segments)
-      .where(eq(segments.transcriptId, id));
+      .where(eq(segments.transcriptId, id))
+      .limit(1);
+    const hasSegments = Boolean(hasSegment);
 
-    if (bytes === 0 && (hasSegments?.count ?? 0) === 0) {
+    if (bytes === 0 && !hasSegments) {
       await discardStaged(id);
       const [failed] = await db
         .update(transcripts)
@@ -408,7 +426,7 @@ export async function transcriptRoutes(app: FastifyInstance): Promise<void> {
       return { transcript: toDTO(readyRow ?? row) };
     }
 
-    const container = containerFor(row.audioMime ?? "audio/webm");
+    const container = containerFor(row.audioMime ?? "audio/webm") ?? { mime: "audio/webm", extension: "webm" as const };
     const key = `audio/${userId}/${id}.${container.extension}`;
     let audio = await readStaged(id, row.chunkSeq);
     if (container.extension === "webm") {

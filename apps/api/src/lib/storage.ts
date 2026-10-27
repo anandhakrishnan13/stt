@@ -26,7 +26,7 @@ export interface StorageDriver {
   read(key: string, range?: AudioRange): Promise<AudioStream | null>;
 }
 
-const KEY_RE = /^audio\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.(webm|m4a|ogg)$/;
+const KEY_RE = /^audio\/[0-9a-f-]{36}\/[0-9a-f-]{36}\.(webm|m4a|ogg|wav|mp3)$/;
 
 /**
  * Supabase's new `sb_secret_...` keys are opaque strings, not JWTs; the gateway
@@ -194,6 +194,3 @@ export function getStorage(): StorageDriver {
   return driver;
 }
 
-export async function readWholeFile(path: string): Promise<Uint8Array> {
-  return new Uint8Array(await readFile(path));
-}

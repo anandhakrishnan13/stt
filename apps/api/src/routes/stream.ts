@@ -9,7 +9,7 @@ import { env } from "../env";
 import { requireAuth } from "../lib/auth-guard";
 import { SttRateLimitError, transcribePcm } from "../lib/stt";
 import { commonPrefix, joinWords } from "../lib/stt/agreement";
-import { pcm16Rms, SAMPLE_RATE, type Word } from "../lib/stt/whisper";
+import { pcm16Rms, SAMPLE_RATE, SILENCE_LANGUAGES, type Word } from "../lib/stt/whisper";
 import { findOwnedTranscript } from "../lib/transcript-access";
 
 const SAMPLES_PER_MS = SAMPLE_RATE / 1_000;
@@ -72,12 +72,12 @@ async function runSession(socket: WebSocket, userId: string, transcriptId: strin
     return;
   }
 
-  const sttEngine =
-    row.engine === "whistle"
-      ? ("whistle" as const)
-      : row.engine === "gemini-live"
-        ? ("gemini" as const)
-        : ("groq" as const);
+  const STT_ENGINE_MAP: Record<string, "whistle" | "gemini" | "groq"> = {
+    whistle: "whistle",
+    "gemini-live": "gemini",
+    gemini: "gemini",
+  };
+  const sttEngine = STT_ENGINE_MAP[row.engine ?? ""] ?? "groq";
   const currentEngineName =
     row.engine ?? (sttEngine === "whistle" ? "whistle" : sttEngine === "gemini" ? "gemini-live" : "groq-whisper");
   const [latest] = await db
@@ -237,8 +237,8 @@ async function runSession(socket: WebSocket, userId: string, transcriptId: strin
     const snapshotStartMs = bufferStartMs;
     const snapshotMs = durationOf(snapshot);
     lastInferredMs = snapshotMs;
-
-    if (pcm16Rms(snapshot) < env.STT_SILENCE_RMS) {
+    const rms = pcm16Rms(snapshot);
+    if (rms < env.STT_SILENCE_RMS) {
       if (previousWords.length > 0) {
         await commit(previousWords, snapshotStartMs);
         advance(snapshot.byteLength);
@@ -254,16 +254,22 @@ async function runSession(socket: WebSocket, userId: string, transcriptId: strin
     }
 
     try {
-      const result = await transcribePcm(snapshot, context || undefined, sttEngine);
-      detectedLanguage = detectedLanguage ?? result.language;
+      const result = await transcribePcm(
+        snapshot,
+        context || undefined,
+        sttEngine,
+        undefined,
+      );
+      if (result.language && !SILENCE_LANGUAGES.has(result.language.toLowerCase())) {
+        detectedLanguage = detectedLanguage ?? result.language;
+      }
       if (result.words.length === 0) return;
 
-      // Drop identical repeated sentences on low-energy audio (Whisper silence echo loops)
       if (
         lastCommitted &&
         result.text.length > 5 &&
         result.text.trim().toLowerCase() === lastCommitted.text.trim().toLowerCase() &&
-        pcm16Rms(snapshot) < 350
+        rms < 350
       ) {
         return;
       }

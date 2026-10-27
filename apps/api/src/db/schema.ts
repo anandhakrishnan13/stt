@@ -49,7 +49,6 @@ export const users = pgTable(
       .$defaultFn(() => new Date()),
     deletedAt: timestamp("deleted_at", { withTimezone: true }),
   },
-  (table) => [index("users_email_idx").on(table.email)],
 );
 
 export const refreshTokens = pgTable(
@@ -121,7 +120,6 @@ export const transcripts = pgTable(
   },
   (table) => [
     index("transcripts_user_created_idx").on(table.userId, table.createdAt),
-    index("transcripts_user_deleted_idx").on(table.userId, table.deletedAt),
   ],
 );
 
@@ -137,7 +135,6 @@ export const recordingChunks = pgTable(
   },
   (table) => [
     primaryKey({ columns: [table.transcriptId, table.seq] }),
-    index("recording_chunks_created_idx").on(table.createdAt),
   ],
 );
 
@@ -169,7 +166,6 @@ export const auditEvents = pgTable(
     metadata: jsonb("metadata").$type<Record<string, unknown>>(),
     createdAt: createdAt(),
   },
-  (table) => [index("audit_events_actor_idx").on(table.actorUserId)],
 );
 
 export type UserRow = typeof users.$inferSelect;

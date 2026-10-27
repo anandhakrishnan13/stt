@@ -22,6 +22,19 @@ export function pcm16ToWav(pcm: Uint8Array, sampleRate = SAMPLE_RATE): Uint8Arra
   ) {
     return pcm;
   }
+  // Other audio containers passed via uploads (WebM, Ogg, MP3, MP4)
+  if (pcm.byteLength >= 4 && pcm[0] === 0x1a && pcm[1] === 0x45 && pcm[2] === 0xdf && pcm[3] === 0xa3) {
+    return pcm;
+  }
+  if (pcm.byteLength >= 4 && pcm[0] === 0x4f && pcm[1] === 0x67 && pcm[2] === 0x67 && pcm[3] === 0x53) {
+    return pcm;
+  }
+  if (pcm.byteLength >= 3 && pcm[0] === 0x49 && pcm[1] === 0x44 && pcm[2] === 0x33) {
+    return pcm;
+  }
+  if (pcm.byteLength >= 8 && pcm[4] === 0x66 && pcm[5] === 0x74 && pcm[6] === 0x79 && pcm[7] === 0x70) {
+    return pcm;
+  }
   const header = Buffer.alloc(44);
   header.write("RIFF", 0, "ascii");
   header.writeUInt32LE(36 + pcm.byteLength, 4);
@@ -97,6 +110,7 @@ export type VerbosePayload = {
   text?: unknown;
   language?: unknown;
   duration?: unknown;
+  words?: { word?: unknown; start?: unknown; end?: unknown }[];
   segments?: {
     words?: { word?: unknown; start?: unknown; end?: unknown }[];
     no_speech_prob?: unknown;
@@ -134,18 +148,17 @@ export function extractWords(
   durationMs: number,
 ): Word[] {
   const words: Word[] = [];
-  for (const segment of payload.segments ?? []) {
-    for (const word of segment.words ?? []) {
-      const value = typeof word.word === "string" ? normalizeTranscript(word.word) : "";
-      if (!value) continue;
-      const start = typeof word.start === "number" ? word.start : null;
-      const end = typeof word.end === "number" ? word.end : null;
-      words.push({
-        text: value,
-        startMs: Math.round((start ?? 0) * 1000),
-        endMs: Math.round((end ?? start ?? 0) * 1000),
-      });
-    }
+  const rawWords = payload.words ?? (payload.segments ?? []).flatMap((seg) => seg.words ?? []);
+  for (const word of rawWords) {
+    const value = typeof word.word === "string" ? normalizeTranscript(word.word) : "";
+    if (!value) continue;
+    const start = typeof word.start === "number" ? word.start : null;
+    const end = typeof word.end === "number" ? word.end : null;
+    words.push({
+      text: value,
+      startMs: Math.round((start ?? 0) * 1000),
+      endMs: Math.round((end ?? start ?? 0) * 1000),
+    });
   }
   if (words.length > 0) return words;
 

@@ -14,14 +14,16 @@ let currentKeyIndex = 0;
 export async function transcribeGemini(
   pcm: Uint8Array,
   context?: string,
+  mimeType = "audio/wav",
 ): Promise<Transcription> {
   const keys = geminiApiKeys();
   if (keys.length === 0) {
     throw new Error("GEMINI_API_KEY is not configured");
   }
 
-  const wav = pcm16ToWav(pcm);
-  const base64Audio = Buffer.from(wav).toString("base64");
+  const effectiveMime = mimeType === "audio/wav" ? "audio/wav" : mimeType;
+  const audioBytes = effectiveMime === "audio/wav" ? pcm16ToWav(pcm) : pcm;
+  const base64Audio = Buffer.from(audioBytes).toString("base64");
   const effectivePrompt = composeSttPrompt(GEMINI_STT_INSTRUCTION, context);
 
   const body = JSON.stringify({
@@ -30,7 +32,7 @@ export async function transcribeGemini(
         parts: [
           {
             inlineData: {
-              mimeType: "audio/wav",
+              mimeType: effectiveMime,
               data: base64Audio,
             },
           },
@@ -52,12 +54,16 @@ export async function transcribeGemini(
 
   for (let attempt = 0; attempt < keys.length; attempt++) {
     const key = keys[(startIndex + attempt) % keys.length];
-    const url = `https://generativelanguage.googleapis.com/v1beta/models/${env.STT_GEMINI_MODEL}:generateContent?key=${key}`;
+    if (!key) continue;
+    const url = `https://generativelanguage.googleapis.com/v1beta/models/${env.STT_GEMINI_MODEL}:generateContent`;
 
     try {
       const response = await fetch(url, {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "x-goog-api-key": key,
+        },
         body,
         signal: AbortSignal.timeout(env.GEMINI_TIMEOUT_MS),
       });

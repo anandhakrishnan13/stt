@@ -1,4 +1,4 @@
-import { asc, eq, sql } from "drizzle-orm";
+import { and, asc, eq } from "drizzle-orm";
 import { db } from "../db";
 import { recordingChunks, transcripts } from "../db/schema";
 import { env } from "../env";
@@ -19,25 +19,13 @@ export type AppendChunkResult = {
 const incomplete = () =>
   errors.stateConflict("Recording is incomplete; upload the missing chunk and retry");
 
-async function totalBytes(
-  tx: Pick<typeof db, "select">,
-  transcriptId: string,
-): Promise<number> {
-  const [row] = await tx
-    .select({
-      bytes: sql<number>`coalesce(sum(length(${recordingChunks.bytes})), 0)`,
-    })
-    .from(recordingChunks)
-    .where(eq(recordingChunks.transcriptId, transcriptId));
-  return Number(row?.bytes ?? 0);
-}
-
 /**
  * Locks the transcript row, so two function instances cannot both apply the
  * same sequence number or interleave a finish with a late chunk.
  */
 export async function appendChunk(
   transcriptId: string,
+  userId: string,
   seq: number,
   chunk: Uint8Array,
 ): Promise<AppendChunkResult> {
@@ -49,7 +37,7 @@ export async function appendChunk(
         audioBytes: transcripts.audioBytes,
       })
       .from(transcripts)
-      .where(eq(transcripts.id, transcriptId))
+      .where(and(eq(transcripts.id, transcriptId), eq(transcripts.userId, userId)))
       .for("update");
 
     if (!row) throw errors.notFound("Transcript not found");
@@ -65,8 +53,7 @@ export async function appendChunk(
       throw errors.stateConflict(`Expected chunk ${row.chunkSeq + 1}, received ${seq}`);
     }
 
-    const current = await totalBytes(tx, transcriptId);
-    if (current + chunk.byteLength > env.MAX_AUDIO_BYTES) {
+    if (row.audioBytes + chunk.byteLength > env.MAX_AUDIO_BYTES) {
       throw errors.payloadTooLarge("Recording exceeded the size limit");
     }
 
@@ -86,7 +73,7 @@ export async function appendChunk(
       .update(transcripts)
       .set({
         chunkSeq: seq,
-        audioBytes: current + chunk.byteLength,
+        audioBytes: row.audioBytes + chunk.byteLength,
         updatedAt: new Date(),
       })
       .where(eq(transcripts.id, transcriptId))
@@ -102,10 +89,6 @@ export async function appendChunk(
       bytes: updated.audioBytes,
     };
   });
-}
-
-export async function stagedBytes(transcriptId: string): Promise<number> {
-  return totalBytes(db, transcriptId);
 }
 
 export async function readStaged(

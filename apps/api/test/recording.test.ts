@@ -349,4 +349,15 @@ describe("recording pipeline", () => {
     const res = await sendChunk(id, 0, Buffer.alloc(0));
     expect(res.statusCode).toBe(400);
   });
+
+  test("bounds chunk bodies with MAX_CHUNK_BYTES", async () => {
+    const { id } = await startRecording();
+    const oversized = Buffer.alloc(300 * 1024);
+    const rejected = await sendChunk(id, 0, oversized);
+    expect(rejected.statusCode).toBe(413);
+
+    const valid = Buffer.alloc(100 * 1024);
+    const accepted = await sendChunk(id, 0, valid);
+    expect(accepted.statusCode).toBe(202);
+  });
 });

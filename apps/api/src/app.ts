@@ -4,7 +4,6 @@ import helmet from "@fastify/helmet";
 import rateLimit from "@fastify/rate-limit";
 import websocket from "@fastify/websocket";
 import Fastify, { type FastifyInstance } from "fastify";
-import { ZodError } from "zod";
 import { corsOrigins, env } from "./env";
 import { limits } from "./lib/limits";
 import { AppError, errors } from "./lib/errors";
@@ -86,29 +85,32 @@ export function buildApp(options: { logger?: boolean } = {}): FastifyInstance {
         .send({ error: { code: error.code, message: error.message, details: error.details } });
     }
 
-    if (error instanceof ZodError) {
-      return reply.code(400).send({
-        error: {
-          code: "VALIDATION_ERROR",
-          message: "Check the highlighted fields",
-          details: error.issues,
-        },
-      });
-    }
 
     const status = httpStatus(error);
-
-    if (status === 429) {
-      return reply.code(429).send({
-        error: { code: "RATE_LIMITED", message: "Too many requests. Try again shortly" },
-      });
-    }
-
-    if (status >= 400 && status < 500) {
-      const message = error instanceof Error ? error.message : "Request failed";
-      return reply
-        .code(status)
-        .send({ error: { code: "VALIDATION_ERROR", message } });
+    switch (status) {
+      case 404:
+        return reply.code(404).send({
+          error: { code: "NOT_FOUND", message: "Resource not found" },
+        });
+      case 413:
+        return reply.code(413).send({
+          error: { code: "PAYLOAD_TOO_LARGE", message: "Upload is too large" },
+        });
+      case 415:
+        return reply.code(415).send({
+          error: { code: "UNSUPPORTED_MEDIA_TYPE", message: "Unsupported media type" },
+        });
+      case 429:
+        return reply.code(429).send({
+          error: { code: "RATE_LIMITED", message: "Too many requests. Try again shortly" },
+        });
+      default:
+        if (status >= 400 && status < 500) {
+          const message = error instanceof Error ? error.message : "Request failed";
+          return reply
+            .code(status)
+            .send({ error: { code: "VALIDATION_ERROR", message } });
+        }
     }
 
     request.log.error(error);

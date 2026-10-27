@@ -21,6 +21,7 @@ const STUB_TEXT = "Hello from the test";
 let rateLimitResponses = 0;
 const uploadSizes: number[] = [];
 const prompts: string[] = [];
+const outboundLanguages: string[] = [];
 
 function tone(seconds: number): Uint8Array {
   const samples = Math.round(16_000 * seconds);
@@ -142,6 +143,8 @@ beforeAll(async () => {
       if (file instanceof Blob) uploadSizes.push(file.size);
       const prompt = body.get("prompt");
       if (typeof prompt === "string") prompts.push(prompt);
+      const lang = body.get("language");
+      outboundLanguages.push(typeof lang === "string" ? lang : "<none>");
     }
 
     return Response.json({
@@ -171,6 +174,7 @@ beforeEach(async () => {
   rateLimitResponses = 0;
   uploadSizes.length = 0;
   prompts.length = 0;
+  outboundLanguages.length = 0;
   ownerId = randomUUID();
   await db.insert(users).values({
     id: ownerId,
@@ -356,5 +360,60 @@ test("rotates the socket before the function duration cap", async () => {
     expect(rotated.type).toBe("rotate");
   } finally {
     (env as { WS_SESSION_MAX_MS: number }).WS_SESSION_MAX_MS = previous;
+  }
+});
+
+test("does not pin detected language onto subsequent passes", async () => {
+  let callCount = 0;
+  const originalFetchHandler = globalThis.fetch;
+  outboundLanguages.length = 0;
+  globalThis.fetch = (async (input, init) => {
+    const url = typeof input === "string" ? input : input instanceof URL ? input.href : input.url;
+    if (!url.endsWith("/audio/transcriptions")) return originalFetch(input, init);
+
+    const body = init?.body;
+    if (body instanceof FormData) {
+      const lang = body.get("language");
+      outboundLanguages.push(typeof lang === "string" ? lang : "<none>");
+    }
+
+    callCount += 1;
+    return Response.json({
+      text: `Pass ${callCount}`,
+      language: callCount === 1 ? "hindi" : "english",
+      segments: [
+        {
+          words: [{ word: `Pass${callCount}`, start: 0, end: 1.0 }],
+        },
+      ],
+    });
+  }) as typeof fetch;
+
+  try {
+    const transcriptId = await createRecording("Recording · 21 Oct, 10:40");
+    const socket = await openSocket(transcriptId);
+    await waitForEvent(socket, "ready");
+
+    const seg1 = waitForEvent(socket, "segment");
+    socket.send(tone(2));
+    await seg1;
+
+    const seg2 = waitForEvent(socket, "segment");
+    socket.send(tone(2));
+    await seg2;
+
+    socket.send(JSON.stringify({ type: "stop" }));
+    await waitForEvent(socket, "done");
+
+    expect(outboundLanguages.length).toBeGreaterThanOrEqual(2);
+    expect(outboundLanguages[1]).toBe("<none>");
+
+    const [row] = await db
+      .select({ language: transcripts.language })
+      .from(transcripts)
+      .where(eq(transcripts.id, transcriptId));
+    expect(row?.language).toBe("hindi");
+  } finally {
+    globalThis.fetch = originalFetchHandler;
   }
 });

@@ -191,6 +191,34 @@ describe("signup and email verification", () => {
     expect(res.statusCode).toBe(403);
     expect(res.json().error.code).toBe("EMAIL_UNVERIFIED");
   });
+
+  test("verified account + wrong code returns 202 without session cookies", async () => {
+    const email = "verified-attacker@example.com";
+    await signupAndVerify(email);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/auth/verify-email",
+      payload: { email, code: "000000" },
+    });
+
+    expect(res.statusCode).toBe(202);
+    expect(res.json().status).toBe("accepted");
+    expect(setCookieHeaders(res).length).toBe(0);
+  });
+
+  test("verified account with missing code returns 400 validation error", async () => {
+    const email = "verified-nocode@example.com";
+    await signupAndVerify(email);
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/auth/verify-email",
+      payload: { email },
+    });
+
+    expect(res.statusCode).toBe(400);
+  });
 });
 
 describe("login and sessions", () => {
@@ -246,6 +274,30 @@ describe("login and sessions", () => {
     expect(familyAfterReplay.statusCode).toBe(401);
   });
 
+  test("parallel refresh with one cookie mints exactly one session", async () => {
+    const email = "parallel-refresh@example.com";
+    await signupAndVerify(email);
+
+    const session = await login(email);
+    expect(session.statusCode).toBe(200);
+    const refreshToken = cookieValue(session, "st_refresh");
+
+    const [first, second] = await Promise.all([
+      app.inject({
+        method: "POST",
+        url: "/auth/refresh",
+        headers: { cookie: `st_refresh=${refreshToken}` },
+      }),
+      app.inject({
+        method: "POST",
+        url: "/auth/refresh",
+        headers: { cookie: `st_refresh=${refreshToken}` },
+      }),
+    ]);
+
+    const statuses = [first.statusCode, second.statusCode].sort();
+    expect(statuses).toEqual([200, 401]);
+  });
   test("rejects tokens belonging to a soft-deleted user", async () => {
     const email = "deleted@example.com";
     const cookies = await signupAndVerify(email);

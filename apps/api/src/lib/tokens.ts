@@ -129,23 +129,30 @@ export async function rotateRefreshToken(input: {
   const nextToken = randomToken();
   const nextId = randomUUID();
 
-  // The old row is revoked and the replacement inserted in parallel; the
-  // replacement is excluded from the revoke by id, so ordering is irrelevant.
-  await Promise.all([
-    db.insert(refreshTokens).values({
-      id: nextId,
-      userId: user.id,
-      tokenHash: sha256Hex(nextToken),
-      familyId: stored.familyId,
-      expiresAt: refreshExpiry(),
-      ip: input.ip ?? null,
-      userAgent: input.userAgent ?? null,
-    }),
-    db
-      .update(refreshTokens)
-      .set({ revokedAt: new Date(), replacedBy: nextId })
-      .where(eq(refreshTokens.id, stored.id)),
-  ]);
+  const [rotated] = await db
+    .update(refreshTokens)
+    .set({ revokedAt: new Date(), replacedBy: nextId })
+    .where(and(eq(refreshTokens.id, stored.id), isNull(refreshTokens.revokedAt)))
+    .returning();
+
+  if (!rotated) {
+    await revokeFamily(stored.familyId);
+    throw new AppError(
+      ErrorCode.UNAUTHENTICATED,
+      401,
+      "Session reuse detected. Sign in again",
+    );
+  }
+
+  await db.insert(refreshTokens).values({
+    id: nextId,
+    userId: user.id,
+    tokenHash: sha256Hex(nextToken),
+    familyId: stored.familyId,
+    expiresAt: refreshExpiry(),
+    ip: input.ip ?? null,
+    userAgent: input.userAgent ?? null,
+  });
 
   return { user, refreshToken: nextToken };
 }

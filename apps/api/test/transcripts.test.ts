@@ -245,4 +245,63 @@ describe("transcript history", () => {
       globalThis.fetch = originalFetch;
     }
   });
+
+  test("rejects unsupported media formats with 415", async () => {
+    const res = await app.inject({
+      method: "POST",
+      url: "/transcripts/upload?name=archive.zip",
+      headers: {
+        cookie: ownerCookie,
+        "content-type": "application/zip",
+      },
+      payload: Buffer.from("PK\x03\x04fakearchive"),
+    });
+    expect(res.statusCode).toBe(415);
+    expect(res.json().error.code).toBe("UNSUPPORTED_MEDIA_TYPE");
+  });
+
+  test("stores and serves uploads with correct mime types and extensions", async () => {
+    const formats = [
+      { mime: "audio/wav", ext: "wav" },
+      { mime: "audio/mpeg", ext: "mp3" },
+      { mime: "audio/mp4", ext: "m4a" },
+      { mime: "audio/ogg", ext: "ogg" },
+      { mime: "audio/webm", ext: "webm" },
+    ];
+
+    const originalFetch = globalThis.fetch;
+    globalThis.fetch = (async () => {
+      return Response.json({
+        text: "Testing formats",
+        language: "english",
+        segments: [{ words: [{ word: "Testing", start: 0, end: 0.5 }] }],
+      });
+    }) as unknown as typeof fetch;
+
+    try {
+      for (const fmt of formats) {
+        const uploadRes = await app.inject({
+          method: "POST",
+          url: `/transcripts/upload?name=test.${fmt.ext}`,
+          headers: {
+            cookie: ownerCookie,
+            "content-type": fmt.mime,
+          },
+          payload: Buffer.from("RIFFtestdataWAVEfmt "),
+        });
+        expect(uploadRes.statusCode).toBe(201);
+        const id = uploadRes.json().transcript.id;
+
+        const audioRes = await app.inject({
+          method: "GET",
+          url: `/transcripts/${id}/audio`,
+          headers: { cookie: ownerCookie },
+        });
+        expect(audioRes.statusCode).toBe(200);
+        expect(audioRes.headers["content-type"]).toBe(fmt.mime);
+      }
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
+  });
 });

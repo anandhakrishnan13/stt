@@ -48,6 +48,8 @@ export const errors = {
   notFound: (message = "Not found") => new AppError(ErrorCode.NOT_FOUND, 404, message),
   stateConflict: (message: string) => new AppError(ErrorCode.STATE_CONFLICT, 409, message),
   payloadTooLarge: (message = "Upload is too large") =>
-    new AppError(ErrorCode.VALIDATION_ERROR, 413, message),
+    new AppError(ErrorCode.PAYLOAD_TOO_LARGE, 413, message),
+  unsupportedMediaType: (message = "Unsupported audio format") =>
+    new AppError(ErrorCode.UNSUPPORTED_MEDIA_TYPE, 415, message),
   internal: () => new AppError(ErrorCode.INTERNAL, 500, "Something went wrong"),
 };

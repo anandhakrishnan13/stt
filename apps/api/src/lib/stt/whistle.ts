@@ -12,10 +12,12 @@ import {
 export async function transcribeWhistle(
   pcm: Uint8Array,
   _prompt?: string,
+  filename = "audio.wav",
+  mimeType = "audio/wav",
 ): Promise<Transcription> {
-  const wav = pcm16ToWav(pcm);
+  const audioBytes = mimeType === "audio/wav" ? pcm16ToWav(pcm) : pcm;
   const form = new FormData();
-  form.append("audio", new File([wav], "audio.wav", { type: "audio/wav" }));
+  form.append("audio", new File([audioBytes], filename, { type: mimeType }));
 
   const headers: Record<string, string> = {};
   if (env.WHISTLE_API_KEY) {

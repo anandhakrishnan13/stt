@@ -100,14 +100,14 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
     window.dispatchEvent(new Event(TRANSCRIPTS_CHANGED));
     showToast("Transcript deleted", "info");
     if (pathname === `/t/${id}` || pathname.startsWith(`/t/${id}`)) {
-      router.replace("/");
+      router.replace("/new");
     }
   }
 
   return (
     <div className="flex h-full min-h-0 w-full flex-col border-r border-slate-200 bg-slate-100/80 dark:border-slate-800 dark:bg-slate-900/70">
       <Link
-        href="/"
+        href="/new"
         onClick={onNavigate}
         className="flex items-center gap-2 px-3 py-3 transition hover:opacity-80"
       >
@@ -119,7 +119,7 @@ export function Sidebar({ onNavigate }: { onNavigate?: () => void }) {
 
       <div className="px-2">
         <Link
-          href="/"
+          href="/new"
           onClick={onNavigate}
           className="flex h-10 w-full items-center gap-2 rounded-lg bg-slate-900 px-3 text-sm font-medium text-white transition hover:bg-slate-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-slate-400 focus-visible:ring-offset-2 dark:bg-slate-100 dark:text-slate-900 dark:hover:bg-white dark:focus-visible:ring-offset-slate-900"
         >

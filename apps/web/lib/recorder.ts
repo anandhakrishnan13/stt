@@ -208,9 +208,9 @@ export class VoiceRecorder {
     await this.uploadChain;
     this.releaseStream();
 
-    // Do not block audio finalization on the live socket flush
-    const livePromise = this.live?.stop().catch(() => {});
+    const live = this.live;
     this.live = null;
+    await live?.stop().catch(() => {});
     if (this.uploadFailure) {
       await api.abortRecording(this.transcriptId).catch(() => {});
       throw this.uploadFailure;

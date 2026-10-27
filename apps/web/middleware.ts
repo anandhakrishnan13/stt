@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 
-const PROTECTED = ["/", "/t/"];
+const PROTECTED = ["/", "/new", "/t/"];
 const AUTH_PAGES = ["/login", "/signup", "/forgot-password", "/reset-password"];
 
 export function middleware(request: NextRequest) {
@@ -15,7 +15,7 @@ export function middleware(request: NextRequest) {
   }
 
   if (hasSession && AUTH_PAGES.some((path) => pathname.startsWith(path))) {
-    return NextResponse.redirect(new URL("/", request.url));
+    return NextResponse.redirect(new URL("/new", request.url));
   }
 
   return NextResponse.next();
@@ -25,6 +25,7 @@ export const config = {
   runtime: "nodejs",
   matcher: [
     "/",
+    "/new",
     "/t/:path*",
     "/login",
     "/signup",

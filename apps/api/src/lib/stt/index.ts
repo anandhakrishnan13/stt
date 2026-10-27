@@ -13,9 +13,15 @@ export function transcribePcm(
   pcm: Uint8Array,
   context?: string,
   engine?: SttEngine | "groq",
+  language?: string | null,
 ): Promise<Transcription> {
   const selected = engine ?? env.STT_PROVIDER;
-  if (selected === "whistle") return transcribeWhistle(pcm, context);
-  if (selected === "gemini") return transcribeGemini(pcm, context);
-  return transcribeGroq(pcm, context);
+  switch (selected) {
+    case "whistle":
+      return transcribeWhistle(pcm, context);
+    case "gemini":
+      return transcribeGemini(pcm, context);
+    default:
+      return transcribeGroq(pcm, context, language);
+  }
 }

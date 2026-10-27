@@ -1,6 +1,7 @@
 "use client";
 
 import { Menu } from "lucide-react";
+import Link from "next/link";
 import { Button } from "@/components/ui/button";
 import { useRouter } from "next/navigation";
 import { useEffect, useState, type ReactNode } from "react";
@@ -63,7 +64,9 @@ export function WorkspaceShell({ children }: { children: ReactNode }) {
           >
             <Menu className="size-5" aria-hidden />
           </button>
-          <span className="text-sm font-semibold tracking-tight">Speech to Text</span>
+          <Link href="/new" className="text-sm font-semibold tracking-tight hover:opacity-80">
+            Speech to Text
+          </Link>
         </header>
 
         {children}

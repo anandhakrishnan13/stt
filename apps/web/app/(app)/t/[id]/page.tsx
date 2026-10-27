@@ -64,7 +64,7 @@ export default function TranscriptPage() {
 
   useEffect(() => {
     if (!id || id === "new" || id === "undefined") {
-      router.replace("/");
+      router.replace("/new");
       return;
     }
     let cancelled = false;
@@ -83,7 +83,7 @@ export default function TranscriptPage() {
       } catch (error) {
         if (cancelled) return;
         if (error instanceof ApiError && error.status === 404) {
-          router.replace("/");
+          router.replace("/new");
           return;
         }
         setState({ status: "error" });
@@ -102,7 +102,7 @@ export default function TranscriptPage() {
         await api.getTranscript(id);
       } catch (error) {
         if (error instanceof ApiError && error.status === 404) {
-          router.replace("/");
+          router.replace("/new");
         }
       }
     };
@@ -131,7 +131,7 @@ export default function TranscriptPage() {
             : "Check your connection and try again."}
         </p>
         <Link
-          href="/"
+          href="/new"
           className="mt-4 inline-flex items-center gap-1.5 text-sm font-medium text-slate-700 underline underline-offset-4 dark:text-slate-300"
         >
           <ArrowLeft className="size-4" aria-hidden />

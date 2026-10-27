@@ -4,6 +4,7 @@ import { refreshSession } from "@/lib/api";
 const API_URL =
   process.env.NEXT_PUBLIC_API_URL ??
   (process.env.NODE_ENV === "production" ? "" : "http://localhost:3001");
+// Client ceiling for waiting on the final flush; the server owns the authoritative flush budget (STT_MAX_FINAL_COOLDOWN_WAIT_MS).
 const STOP_TIMEOUT_MS =
   Number(process.env.NEXT_PUBLIC_STT_STOP_TIMEOUT_MS) || 2_000;
 const RECONNECT_DELAYS_MS = (process.env.NEXT_PUBLIC_STT_RECONNECT_DELAYS_MS ??

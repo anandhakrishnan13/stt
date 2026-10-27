@@ -19,7 +19,7 @@ import { saveCachedUser } from "@/lib/session";
 function LoginForm() {
   const router = useRouter();
   const params = useSearchParams();
-  const nextPath = params.get("next") ?? "/";
+  const nextPath = params.get("next") ?? "/new";
   const [formError, setFormError] = useState<string | null>(null);
   const [unverifiedEmail, setUnverifiedEmail] = useState<string | null>(null);
   const resetDone = params.get("reset") === "1";

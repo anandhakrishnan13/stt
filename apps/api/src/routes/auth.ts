@@ -142,38 +142,35 @@ export async function authRoutes(app: FastifyInstance): Promise<void> {
       if (!user) throw errors.otpInvalid();
       if (user.status === "suspended") throw errors.suspended();
 
-      if (!user.emailVerifiedAt) {
-        // Validate first (a bad code must not open a session), then spend one
-        // round trip on the three independent writes.
-        const otpId = await checkOtp({
-          email: user.email,
-          purpose: "verify_email",
-          code: input.code,
-        });
-        const verifiedAt = new Date();
-        const verified = { ...user, status: "active" as const, emailVerifiedAt: verifiedAt };
-
-        await Promise.all([
-          consumeOtpRow(otpId),
-          db
-            .update(users)
-            .set({ status: "active", emailVerifiedAt: verifiedAt, updatedAt: verifiedAt })
-            .where(eq(users.id, user.id)),
-          startSession(reply, user, request),
-        ]);
-
-        void recordAudit({
-          action: "email_verified",
-          actorUserId: user.id,
-          target: user.email,
-          ip: request.ip,
-          userAgent: request.headers["user-agent"] ?? null,
-        });
-        return reply.code(200).send({ user: toDTO(verified) });
+      if (user.emailVerifiedAt) {
+        return reply.code(202).send({ status: "accepted" });
       }
 
-      await startSession(reply, user, request);
-      return reply.code(200).send({ user: toDTO(user) });
+      const otpId = await checkOtp({
+        email: user.email,
+        purpose: "verify_email",
+        code: input.code,
+      });
+      const verifiedAt = new Date();
+      const verified = { ...user, status: "active" as const, emailVerifiedAt: verifiedAt };
+
+      await Promise.all([
+        consumeOtpRow(otpId),
+        db
+          .update(users)
+          .set({ status: "active", emailVerifiedAt: verifiedAt, updatedAt: verifiedAt })
+          .where(eq(users.id, user.id)),
+        startSession(reply, user, request),
+      ]);
+
+      void recordAudit({
+        action: "email_verified",
+        actorUserId: user.id,
+        target: user.email,
+        ip: request.ip,
+        userAgent: request.headers["user-agent"] ?? null,
+      });
+      return reply.code(200).send({ user: toDTO(verified) });
     },
   );
 
