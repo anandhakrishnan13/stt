@@ -9,7 +9,8 @@ import { env } from "../env";
 import { requireAuth } from "../lib/auth-guard";
 import { SttRateLimitError, transcribePcm } from "../lib/stt";
 import { commonPrefix, joinWords } from "../lib/stt/agreement";
-import { pcm16Rms, SAMPLE_RATE, SILENCE_LANGUAGES, type Word } from "../lib/stt/whisper";
+import { pcm16Rms, SAMPLE_RATE, type Word } from "../lib/stt/audio";
+import { SILENCE_LANGUAGES } from "../lib/stt/whisper";
 import { findOwnedTranscript } from "../lib/transcript-access";
 
 const SAMPLES_PER_MS = SAMPLE_RATE / 1_000;

@@ -2,12 +2,12 @@ import { env, geminiApiKeys } from "../../env";
 import { SttRateLimitError } from "./groq";
 import { composeSttPrompt, GEMINI_STT_INSTRUCTION } from "./prompt";
 import {
-  extractWords,
   normalizeTranscript,
   pcm16ToWav,
   SAMPLE_RATE,
   type Transcription,
-} from "./whisper";
+} from "./audio";
+import { extractWords } from "./whisper";
 
 let currentKeyIndex = 0;
 

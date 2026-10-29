@@ -15,7 +15,7 @@ import type { ReadableStream as WebReadableStream } from "node:stream/web";
 import { transcribeAudioBuffer } from "../lib/stt/groq";
 import { transcribeGemini } from "../lib/stt/gemini";
 import { transcribeWhistle } from "../lib/stt/whistle";
-import type { Transcription } from "../lib/stt/whisper";
+import type { Transcription } from "../lib/stt/audio";
 import { db } from "../db";
 import { env } from "../env";
 import { segments, transcripts, type TranscriptRow } from "../db/schema";

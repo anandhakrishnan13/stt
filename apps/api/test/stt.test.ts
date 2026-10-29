@@ -5,7 +5,8 @@ import {
   composeWhisperPrompt,
   GEMINI_STT_INSTRUCTION,
 } from "../src/lib/stt/prompt";
-import { cleanTranscript, isHallucination, pcm16Rms, pcm16ToWav, type Word } from "../src/lib/stt/whisper";
+import { cleanTranscript, pcm16Rms, pcm16ToWav, type Word } from "../src/lib/stt/audio";
+import { isHallucination } from "../src/lib/stt/whisper";
 
 function word(text: string, startMs: number, endMs: number): Word {
   return { text, startMs, endMs };

@@ -1,6 +1,6 @@
 import { describe, expect, test } from "bun:test";
 import { romanizeIndic } from "../src/lib/stt/romanize";
-import { normalizeTranscript } from "../src/lib/stt/whisper";
+import { normalizeTranscript } from "../src/lib/stt/audio";
 
 describe("indic romanization", () => {
   test("writes Malayalam the way people type it in chat", () => {

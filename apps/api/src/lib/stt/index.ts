@@ -2,10 +2,10 @@ import { env } from "../../env";
 import { transcribeGemini } from "./gemini";
 import { transcribeGroq } from "./groq";
 import { transcribeWhistle } from "./whistle";
-import type { Transcription, Word } from "./whisper";
+import type { Transcription, Word } from "./audio";
 
 export { SttRateLimitError } from "./groq";
-export type { Transcription, Word } from "./whisper";
+export type { Transcription, Word } from "./audio";
 
 export type SttEngine = "whisper" | "gemini" | "whistle";
 

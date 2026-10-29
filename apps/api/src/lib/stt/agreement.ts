@@ -1,4 +1,4 @@
-import type { Word } from "./whisper";
+import type { Word } from "./audio";
 
 export function normalizeWord(text: string): string {
   return text.toLowerCase().replace(/[^\p{L}\p{N}']/gu, "");

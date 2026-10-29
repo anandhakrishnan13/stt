@@ -1,15 +1,12 @@
 import { env } from "../../env";
 import { composeWhisperPrompt } from "./prompt";
 import {
-  extractWords,
-  isHallucination,
   normalizeTranscript,
+  pcm16DurationMs,
   pcm16ToWav,
-  SAMPLE_RATE,
-  SILENCE_LANGUAGES,
   type Transcription,
-  type VerbosePayload,
-} from "./whisper";
+} from "./audio";
+import { extractWords, isHallucination, SILENCE_LANGUAGES, type VerbosePayload } from "./whisper";
 
 export class SttRateLimitError extends Error {
   constructor(readonly retryAfterMs: number) {
@@ -65,7 +62,7 @@ export async function transcribeGroq(
     return { text: "", language: null, words: [] };
   }
   const text = normalizeTranscript(typeof payload.text === "string" ? payload.text : "");
-  const durationMs = (pcm.byteLength / 2 / SAMPLE_RATE) * 1000;
+  const durationMs = pcm16DurationMs(pcm);
   return {
     text,
     language:
