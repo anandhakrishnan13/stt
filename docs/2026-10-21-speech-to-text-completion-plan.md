@@ -15,7 +15,7 @@
 - **PostgreSQL only.** Remove SQLite, `bun:sqlite`, `drizzle-orm/bun-sqlite`, and `file:` database URLs. Do not add PGlite or another SQL dialect.
 - **Local development and tests:** PostgreSQL 17 from `docker-compose.yml`.
 - **Production:** Supabase Postgres through the **session pooler** on port `5432`, with `ssl: "require"` and `prepare: false`.
-- **Speech-to-text:** Groq `whisper-large-v3-turbo` by default. Keep the existing local Whisper adapter as an optional fallback behind `STT_PROVIDER=whisper`.
+- **Speech-to-text:** Groq `whisper-large-v3-turbo` over the hosted Groq API by default (`STT_PROVIDER=groq`). There is no local Whisper adapter and no `whisper` provider value; the only self-deployed engine is Whistle (`STT_PROVIDER=whistle`, `https://whistle.heureux.tech`).
 - **Window size:** `STT_STEP_MS=6000`, `STT_MAX_WINDOW_MS=6000`, `STT_MIN_WINDOW_MS=1500`. This keeps Groq at 10 requests/minute and under the free-tier 20 RPM and 7,200 audio-seconds/hour limits. Do not send a request every 2–3 seconds.
 - **Audio:** 16 kHz, mono, signed 16-bit little-endian PCM. WAV headers are generated server-side.
 - **Limits:** `MAX_AUDIO_BYTES=10485760` (10 MiB) to match the Supabase bucket; recordings are capped at one hour.
@@ -825,7 +825,7 @@ STT_MAX_WINDOW_MS=6000
 STT_MIN_WINDOW_MS=1500
 ```
 
-Do not remove `WHISPER_URL` or `WHISPER_TIMEOUT_MS`; they remain the fallback.
+There is no local Whisper server and no `WHISPER_URL`/`WHISPER_TIMEOUT_MS` variables. Whisper is reached through Groq at `GROQ_BASE_URL` (`apps/api/src/lib/stt/groq.ts`); Whistle is the self-deployed engine.
 
 - [ ] **Step 2: Write the failing stream test**
 

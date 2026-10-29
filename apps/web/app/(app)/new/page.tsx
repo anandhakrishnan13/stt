@@ -22,8 +22,8 @@ function greeting(): string {
 
 const MODEL_LABELS: Record<string, string> = {
   gemini: "Gemini",
-  whisper: "Whisper",
-  whistle: "Whistle",
+  whisper: "Whisper (Groq)",
+  whistle: "Whistle (self-hosted)",
 };
 
 type RecordingState =
@@ -231,7 +231,7 @@ export default function WorkspacePage() {
 
       <div className="mx-auto w-full max-w-xl shrink-0 px-4 pb-6 pt-2">
         <div className="flex justify-center pb-3">
-          <div className="inline-flex items-center rounded-full bg-slate-100 p-0.5 text-xs font-medium dark:bg-slate-800">
+          <div className="inline-flex max-w-full flex-wrap items-center justify-center rounded-full bg-slate-100 p-0.5 text-xs font-medium dark:bg-slate-800">
             <button
               type="button"
               disabled={recording}
@@ -256,7 +256,7 @@ export default function WorkspacePage() {
                   : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100",
               )}
             >
-              Whisper
+              {MODEL_LABELS.whisper}
             </button>
             <button
               type="button"
@@ -269,7 +269,7 @@ export default function WorkspacePage() {
                   : "text-slate-500 hover:text-slate-900 dark:text-slate-400 dark:hover:text-slate-100",
               )}
             >
-              Whistle
+              {MODEL_LABELS.whistle}
             </button>
           </div>
         </div>
